@@ -8,7 +8,6 @@ http.createServer(function (req, res) {
 	switch(req.url) {
 		case '/login':
 			if(req.method == 'POST') {
-				console.log("[200] " + req.method + " to " + req.url);
 				var fullBody = '';
 
 				req.on('data', function(chunk) {
@@ -34,9 +33,9 @@ http.createServer(function (req, res) {
 							console.log(JSON.stringify(data));
 							console.log("\n");
 						}).on('presence', function(data) {
-							console.log('presence');
-							console.log(JSON.stringify(data));
-							console.log("\n");
+							//console.log('presence');
+							//console.log(JSON.stringify(data));
+							//console.log("\n");
 						});
 
 						gtalk.login(function() {
@@ -57,7 +56,6 @@ http.createServer(function (req, res) {
 			break;
 		case '/message':
 			if(req.method == 'POST') {
-				console.log("[200] " + req.method + " to " + req.url);
 				var fullBody = '';
 
 				req.on('data', function(chunk) {
@@ -90,7 +88,6 @@ http.createServer(function (req, res) {
 			break;
 		case '/roster':
 			if(req.method == 'POST') {
-				console.log("[200] " + req.method + " to " + req.url);
 				var fullBody = '';
 
 				req.on('data', function(chunk) {
@@ -128,7 +125,6 @@ http.createServer(function (req, res) {
 			break;
 		case '/logout':
 			if(req.method == 'POST') {
-				console.log("[200] " + req.method + " to " + req.url);
 				var fullBody = '';
 
 				req.on('data', function(chunk) {

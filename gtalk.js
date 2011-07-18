@@ -37,6 +37,9 @@ gtalk.prototype.login = function(cb) {
 			
 				ss.write("<stream:stream to='" + self.server + "' xmlns='jabber:client' xmlns:stream='http://etherx.jabber.org/streams' version='1.0'>");
 				self.sock = ss;
+				
+				var expecting_roster = false;
+				var roster_text = "";
 			
 				ss.on('data', function(data) {
 					var str = data.toString('utf8');
@@ -44,7 +47,6 @@ gtalk.prototype.login = function(cb) {
 					if(str.indexOf('stream:features') != -1) {
 						if(self.logged_in) {
 							ss.write("<iq type='set' id='bind_resource'><bind xmlns='urn:ietf:params:xml:ns:xmpp-bind'><resource>wpmango</resource></bind></iq>");
-							ss.write("<iq to='" + self.server + "' type='set' id='session'><session xmlns='urn:ietf:params:xml:ns:xmpp-session'/></iq>");
 						} else {
 							var token = base64_encode(new Buffer('\u0000' + self.username + '\u0000' + self.auth));
 					
@@ -58,36 +60,65 @@ gtalk.prototype.login = function(cb) {
 						self.emit('auth_failure', str);
 						self.logout();
 					} else if(str.indexOf('iq') != -1) {
-						if(str.indexOf('session') != -1) {
-							ss.removeAllListeners('data');
-							var parser = new xml2js.Parser();
-							parser.addListener('end', function(result) {
-								if(result.presence) {
-									if(result.presence.length) {
-										for(i = 0; i < result.presence.length; i++) {
-											self.emit('presence', self.stripPresence(result.presence[i]));
-										}
-									} else {
-										self.emit('presence', self.stripPresence(result.presence));
+						if(str.indexOf('bind_resource') != -1) {
+							self.jid = str.match(/<jid>([^>]*)<\/jid>/)[1];
+							
+							ss.write("<iq to='" + self.server + "' type='set' id='session'><session xmlns='urn:ietf:params:xml:ns:xmpp-session'/></iq>");
+						} else if(str.indexOf('session') != -1) {
+							ss.write("<iq from='" + self.jid + "' type='get' id='roster'><query xmlns='jabber:iq:roster'/></iq>");
+							expecting_roster = true;
+						} else if(expecting_roster) {
+							roster_text += str;
+							
+							if(str.indexOf('</iq>') == -1) {
+								return;
+							}
+							
+							var roster_parser = new xml2js.Parser();
+							
+							roster_parser.addListener('end', function(result) {
+								if(result.query.item.length) {
+									for(i = 0; i < result.query.item.length; i++) {
+										var ros = self.stripRoster(result.query.item[i]);
+										self.rosterList[ros.jid] = ros;
 									}
-								} else if(result.message) {
-									if(result.message.length) {
-										for(i = 0; i < result.message.length; i++) {
-										self.emit('message', self.stripMessage(result.message[i]));
-										}
-									} else {
-										self.emit('message', self.stripMessage(result.message));
-									}
+								} else {
+									var ros = self.stripRoster(result.query.item);
+									self.rosterList[ros.jid] = ros;
 								}
+							
+								if(cb) cb();
 							});
+							
+							roster_parser.parseString(roster_text);
+							
+							ss.removeAllListeners('data');
 							ss.addListener('data', function(d) {
+								var parser = new xml2js.Parser();
+								
+								parser.addListener('end', function(result) {
+									if(result.presence) {
+										if(result.presence.length) {
+											for(i = 0; i < result.presence.length; i++) {
+												self.emit('presence', self.stripPresence(result.presence[i]));
+											}
+										} else {
+											self.emit('presence', self.stripPresence(result.presence));
+										}
+									} else if(result.message) {
+										if(result.message.length) {
+											for(i = 0; i < result.message.length; i++) {
+											self.emit('message', self.stripMessage(result.message[i]));
+											}
+										} else {
+											self.emit('message', self.stripMessage(result.message));
+										}
+									}
+								});
+								
 								parser.parseString("<x>" + d.toString('utf8') + "</x>");
 							});
 							ss.write("<presence/>");
-						} else if(str.indexOf('bind_resource') != -1) {
-							self.jid = str.match(/<jid>([^>]*)<\/jid>/)[1];
-							
-							if(cb) cb();
 						}
 					}
 				});
@@ -97,7 +128,7 @@ gtalk.prototype.login = function(cb) {
 };
 
 gtalk.prototype.stripMessage = function(m) {
-	var msg = {'from': m['@'].from};
+	var msg = {from: m['@'].from};
 	
 	if(m['@'].type) msg.type = m['@'].type;
 	if(m.body) msg.body = m.body;
@@ -107,17 +138,37 @@ gtalk.prototype.stripMessage = function(m) {
 };
 
 gtalk.prototype.stripPresence = function(p) {
-	var pre = {'from': p['@'].from};
+	var pre = {jid: p['@'].from};
 	
 	if(p['@'].type) pre.type = p['@'].type;
 	if(p.show) pre.show = p.show;
 	if(p.status && typeof(p.status) == 'string') pre.status = p.status;
 	if(p.x && p.x.photo) pre.photo = p.x.photo;
 	
-	this.rosterList[pre.from.split("/")[0]] = pre;
+	if(!this.rosterList[pre.jid.split("/")[0]]) {
+		this.rosterList[pre.jid.split("/")[0]] = pre;
+	} else {
+		var orig = this.rosterList[pre.jid.split("/")[0]];
+		
+		for(var x in pre) {
+			if(typeof(pre[x]) == 'function') continue;
+			
+			orig[x] = pre[x];
+		}
+		
+		if(!pre.type && orig.type) orig.type = undefined;
+	}
 	
 	return pre;
-}
+};
+
+gtalk.prototype.stripRoster = function(r) {
+	var ros = {jid: r['@'].jid, type: 'unavailable'};
+	
+	if(r['@'].name) ros.name = r['@'].name;
+	
+	return ros;
+};
 
 gtalk.prototype.send = function(data, cb) {
 	this.sock.write(data, cb);
@@ -129,7 +180,7 @@ gtalk.prototype.message = function(to, body, cb) {
 
 gtalk.prototype.roster = function(cb) {
 	for(var username in this.rosterList) {
-		if(typeof(username) != 'string') continue;
+		if(typeof(username) != 'string' || typeof(this.rosterList[username]) == 'function') continue;
 		
 		cb(this.rosterList[username]);
 	}

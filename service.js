@@ -29,9 +29,9 @@ http.createServer(function (req, res) {
 							res.writeHead(401, "Authentication Required", {'Content-Type': 'text/plain'});
 							res.end('401 - Authentication Required');
 						}).on('message', function(data) {
-							console.log('message');
-							console.log(JSON.stringify(data));
-							console.log("\n");
+							//console.log('message');
+							//console.log(JSON.stringify(data));
+							//console.log("\n");
 						}).on('presence', function(data) {
 							//console.log('presence');
 							//console.log(JSON.stringify(data));

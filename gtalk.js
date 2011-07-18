@@ -134,6 +134,8 @@ gtalk.prototype.stripMessage = function(m) {
 	if(m.body) msg.body = m.body;
 	if(m['nos:x']) msg.otr = m['nos:x']['@'].value == 'enabled';
 	
+	this.rosterList[msg.from.split("/")[0]].otr = msg.otr;
+	
 	return msg;
 };
 
@@ -175,7 +177,17 @@ gtalk.prototype.send = function(data, cb) {
 };
 
 gtalk.prototype.message = function(to, body, cb) {
-	this.send("<message from='" + this.jid + "' to='" + to + "'><body>" + body + "</body><nos:x value='disabled' xmlns:nos='google:nosave' /><arc:record otr='false' xmlns:arc='http://jabber.org/protocol/archive' /></message>", cb);
+	var jid = to;
+	
+	if(jid.indexOf('/')) {
+		jid = jid.split("/")[0]
+	}
+	
+	if(this.rosterList[jid].otr) {
+		this.send("<message from='" + this.jid + "' to='" + to + "'><body>" + body + "</body><nos:x value='enabled' xmlns:nos='google:nosave' /><arc:record otr='true' xmlns:arc='http://jabber.org/protocol/archive' /></message>", cb);
+	} else {
+		this.send("<message from='" + this.jid + "' to='" + to + "'><body>" + body + "</body><nos:x value='disabled' xmlns:nos='google:nosave' /><arc:record otr='false' xmlns:arc='http://jabber.org/protocol/archive' /></message>", cb);
+	}
 };
 
 gtalk.prototype.roster = function(cb) {

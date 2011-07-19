@@ -69,7 +69,7 @@ https.createServer(options, function (req, res) {
 			break;
 		case '/register':
 			handlePOST(res, req, ['token', 'url'], function(post) {
-				if(!post.url.match(/(https?):\/\/([a-z.-]+)(?::([0-9]+))?(\/.*)?$/)) {
+				if(!post.url.match(/(https?):\/\/([a-z0-9.-]+)(?::([0-9]+))?(\/.*)?$/)) {
 					log.notice("[400] " + req.method + " to " + req.url);
 					res.writeHead(400, "Bad Request", {'Content-Type': 'text/plain'});
 					res.end('400 - Bad Request');

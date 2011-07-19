@@ -10,7 +10,7 @@ var options = {
 	cert: fs.readFileSync('server.crt')
 };
 
-https.createServer(function (req, res) {
+https.createServer(options, function (req, res) {
 	switch(req.url) {
 		case '/login':
 			handlePOST(res, req, ['username', 'auth'], function(post) {			

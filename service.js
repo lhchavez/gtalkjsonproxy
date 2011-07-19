@@ -24,7 +24,7 @@ https.createServer(options, function (req, res) {
 						logger.notice("[401] " + req.method + " to " + req.url);
 						res.writeHead(401, "Authentication Required", {'Content-Type': 'text/plain'});
 						res.end('401 - Authentication Required');
-					}).on('message', logger.debug).on('presence', logger.debug);
+					}).on('message', function(data) { logger.debug(JSON.stringify(data); }).on('presence', function(data) { logger.debug(JSON.stringify(data)); });
 
 					gtalk.login(function() {
 						logger.notice("[200] " + req.method + " to " + req.url);

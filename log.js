@@ -76,7 +76,7 @@ Log.prototype.log = function(level, args) {
 		var msg = "";
 		
 		if(args[0]) {
-			args[0].replace(/%s/g, function(){
+			msg = args[0].replace(/%s/g, function(){
 				if(args[i]) return args[i++];
 				else        return "";
 			});

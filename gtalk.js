@@ -131,7 +131,7 @@ gtalk.prototype.login = function(cb) {
 		if(!self.callback) return;
 
 		self.post(self.callback, JSON.stringify(data), function(res) {
-			res.on('data', function(chunk) {  console.log(JSON.stringify(res.headers)); console.log(chunk.toString()); console.log(
+			res.on('data', function(chunk) {  console.log(JSON.stringify(res.headers)); console.log(chunk.toString()); console.log(); });
 		}, function(e) {
 			console.log('error, disabling callback');
 			self.callback = undefined;

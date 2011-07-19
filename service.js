@@ -1,8 +1,12 @@
 var https = require('https');
 var querystring = require('querystring');
 var util = require('util');
-var log = require('./util').log;
+var logging = require('./log');
 var fs = require('fs');
+
+logging.rootLogger.level = logging.DEBUG;
+
+var log = logging.log('service');
  
 var mapping = {};
 var options = {
@@ -74,7 +78,7 @@ https.createServer(options, function (req, res) {
 					res.writeHead(400, "Bad Request", {'Content-Type': 'text/plain'});
 					res.end('400 - Bad Request');
 				} else {
-					console.log("[200] " + req.method + " to " + req.url);
+					log.notice("[200] " + req.method + " to " + req.url);
 					res.writeHead(200, "OK", {'Content-Type': 'text/plain'});
 					res.end();
 					mapping[post.token].register(post.url);

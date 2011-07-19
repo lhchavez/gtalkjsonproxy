@@ -1,4 +1,4 @@
-var log = require('./util').log;
+var log = require('./log').log('gtalk');
 
 function gtalk(username, auth) {
 	this.username = username;

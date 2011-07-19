@@ -75,9 +75,10 @@ Log.prototype.log = function(level, args) {
 		var i = 1;
 		var msg = "";
 		
-		if(args.length > 0 && args[0]) {
+		if(args[0]) {
 			args[0].replace(/%s/g, function(){
-				return args[i++];
+				if(args[i]) return args[i++];
+				else        return "";
 			});
 		}
 		

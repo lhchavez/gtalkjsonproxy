@@ -1,4 +1,4 @@
-var log = require('./log').log('gtalk');
+var logger = require('./log').log('gtalk');
 
 function gtalk(username, auth) {
 	this.username = username;
@@ -133,10 +133,10 @@ gtalk.prototype.login = function(cb) {
 		if(!self.callback) return;
 
 		self.post(self.callback, JSON.stringify(data), function(res) {
-			res.on('data', function(chunk) {  log.debug(JSON.stringify(res.headers)); log.debug(chunk.toString()); log.debug(); });
+			res.on('data', function(chunk) {  logger.debug(JSON.stringify(res.headers)); logger.debug(chunk.toString()); logger.debug(); });
 		}, function(e) {
-			log.debug('error, disabling callback');
-			log.debug(e);
+			logger.debug('error, disabling callback');
+			logger.debug(e);
 			self.callback = undefined;
 		});
 	});
@@ -144,10 +144,12 @@ gtalk.prototype.login = function(cb) {
 		if(!self.callback) return;
 
 		self.post(self.callback, JSON.stringify(data), function(res) {
-			res.on('data', function(chunk) {  log.debug(JSON.stringify(res.headers)); log.debug(chunk.toString()); log.debug(); });
+			res.on('data', function(chunk) {  console.log('es acá?'); console.log(logger); logger.debug(JSON.stringify(res.headers)); logger.debug(chunk.toString()); logger.debug(""); });
 		}, function(e) {
-			log.debug('error, disabling callback');
-			log.debug(e);
+			console.log('o acá?'); console.log(logger);
+			
+			logger.debug('error, disabling callback');
+			logger.debug(e);
 			self.callback = undefined;
 		}, {'X-NotificationClass': '13'});
 	});

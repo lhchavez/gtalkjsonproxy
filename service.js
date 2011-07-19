@@ -6,7 +6,7 @@ var fs = require('fs');
 
 logging.rootLogger.level = logging.DEBUG;
 
-var log = logging.log('service');
+var logger = logging.log('service');
  
 var mapping = {};
 var options = {
@@ -21,13 +21,13 @@ https.createServer(options, function (req, res) {
 					var gtalk = require('./gtalk')(post.username, post.auth);
 
 					gtalk.on('auth_failure', function(details) {
-						log.notice("[401] " + req.method + " to " + req.url);
+						logger.notice("[401] " + req.method + " to " + req.url);
 						res.writeHead(401, "Authentication Required", {'Content-Type': 'text/plain'});
 						res.end('401 - Authentication Required');
-					}).on('message', log.debug).on('presence', log.debug);
+					}).on('message', logger.debug).on('presence', logger.debug);
 
 					gtalk.login(function() {
-						log.notice("[200] " + req.method + " to " + req.url);
+						logger.notice("[200] " + req.method + " to " + req.url);
 						res.writeHead(200, "OK", {'Content-Type': 'text/plain'});
 
 						var token = randomString(96);
@@ -40,7 +40,7 @@ https.createServer(options, function (req, res) {
 			break;
 		case '/message':
 			handlePOST(res, req, ['token', 'to', 'body'], function(post) {
-				log.notice("[200] " + req.method + " to " + req.url);
+				logger.notice("[200] " + req.method + " to " + req.url);
 				res.writeHead(200, "OK", {'Content-Type': 'text/plain'});
 				res.end();
 				mapping[post.token].message(post.to, post.body);
@@ -49,7 +49,7 @@ https.createServer(options, function (req, res) {
 			break;
 		case '/roster':
 			handlePOST(res, req, ['token'], function(post) {
-				log.notice("[200] " + req.method + " to " + req.url);
+				logger.notice("[200] " + req.method + " to " + req.url);
 				res.writeHead(200, "OK", {'Content-Type': 'text/plain'});
 				mapping[post.token].roster(function(ros) {
 					if(ros == null) {
@@ -63,7 +63,7 @@ https.createServer(options, function (req, res) {
 			break;
 		case '/logout':
 			handlePOST(res, req, ['token'], function(post) {
-				log.notice("[200] " + req.method + " to " + req.url);
+				logger.notice("[200] " + req.method + " to " + req.url);
 				res.writeHead(200, "OK", {'Content-Type': 'text/plain'});
 				res.end();
 				mapping[post.token].logout();
@@ -74,11 +74,11 @@ https.createServer(options, function (req, res) {
 		case '/register':
 			handlePOST(res, req, ['token', 'url'], function(post) {
 				if(!post.url.match(/(https?):\/\/([a-z0-9.-]+)(?::([0-9]+))?(\/.*)?$/)) {
-					log.notice("[400] " + req.method + " to " + req.url);
+					logger.notice("[400] " + req.method + " to " + req.url);
 					res.writeHead(400, "Bad Request", {'Content-Type': 'text/plain'});
 					res.end('400 - Bad Request');
 				} else {
-					log.notice("[200] " + req.method + " to " + req.url);
+					logger.notice("[200] " + req.method + " to " + req.url);
 					res.writeHead(200, "OK", {'Content-Type': 'text/plain'});
 					res.end();
 					mapping[post.token].register(post.url);
@@ -86,7 +86,7 @@ https.createServer(options, function (req, res) {
 			});
 
 		default:
-			log.notice("[404] " + req.method + " to " + req.url);
+			logger.notice("[404] " + req.method + " to " + req.url);
 			res.writeHead(404, "Not found", {'Content-Type': 'text/plain'});
 			res.end('404 - Not found');
 			break;
@@ -132,11 +132,11 @@ function handlePOST(res, req, params, cb) {
 			}
 		
 			if(!valid) {
-				log.notice("[400] " + req.method + " to " + req.url);
+				logger.notice("[400] " + req.method + " to " + req.url);
 				res.writeHead(400, "Bad Request", {'Content-Type': 'text/plain'});
 				res.end('400 - Bad Request');
 			} else if(params.indexOf('token') != -1 && !mapping[post.token]) {
-				log.notice("[404] " + req.method + " to " + req.url);
+				logger.notice("[404] " + req.method + " to " + req.url);
 				res.writeHead(404, "Not found", {'Content-Type': 'text/plain'});
 				res.end('404 - Not found');
 			} else {
@@ -144,10 +144,10 @@ function handlePOST(res, req, params, cb) {
 			}
 		});
 	} else {
-		log.notice("[405] " + req.method + " to " + req.url);
+		logger.notice("[405] " + req.method + " to " + req.url);
 		res.writeHead(405, "Method not supported", {'Content-Type': 'text/plain'});
 		res.end('405 - Method not supported');
 	}
 }
 
-log.notice('Starting gtalkjsonproxy on port 433');
+logger.notice('Starting gtalkjsonproxy on port 433');

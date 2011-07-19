@@ -6,6 +6,7 @@ function gtalk(username, auth) {
 	this.jid = undefined;
 	this.sock = undefined;
 	this.rosterList = {};
+	this.callback = undefined;
 };
 
 gtalk.prototype = new process.EventEmitter();
@@ -125,6 +126,20 @@ gtalk.prototype.login = function(cb) {
 			});
 		}
 	});
+	
+	var defaultCallback = function(data) {
+		if(!self.callback) return;
+
+		self.post(self.callback, JSON.stringify(data), function(res) {
+			res.on('data', function(chunk) {  console.log(JSON.stringify(res.headers)); console.log(chunk.toString()); console.log(
+		}, function(e) {
+			console.log('error, disabling callback');
+			self.callback = undefined;
+		});
+	};
+
+	this.on('message', defaultCallback);
+	this.on('presence', defaultCallback);
 };
 
 gtalk.prototype.stripMessage = function(m) {
@@ -176,6 +191,32 @@ gtalk.prototype.send = function(data, cb) {
 	this.sock.write(data, cb);
 };
 
+gtalk.prototype.post = function(url, data, cb, ecb) {
+	var params = url.match(/(https?):\/\/([^\/:]*)(?::([^\/]*))?(.*)?/);
+	
+	var buf = new Buffer(data);
+
+	var options = {
+		host: params[2],
+		port: parseInt(params[3]),
+		path: params[4],
+		method: 'POST',
+		headers: {'X-NotificationClass': '3', 'Content-Type': 'text/json', 'Content-Length': buf.length}
+	};
+
+	if(!options.port) {
+		if(params[1] == 'http') options.port = 80;
+		else options.port = 443;
+	}
+
+	if(!options.path) {
+		options.path = '/';
+	}
+
+	if(params[1] == 'http') require('http').request(options, cb).on('error', ecb).end(buf);
+	else require('https').request(options, cb).on('error', ecb).end(buf);
+};
+
 gtalk.prototype.message = function(to, body, cb) {
 	var jid = to;
 	
@@ -198,7 +239,11 @@ gtalk.prototype.roster = function(cb) {
 	}
 	
 	cb(null);
-}
+};
+
+gtalk.prototype.register = function(url) {
+	this.callback = url;
+};
 
 gtalk.prototype.logout = function() {
 	var self = this;

@@ -133,13 +133,14 @@ gtalk.prototype.login = function(cb) {
 		if(!self.callback) return;
 
 		self.post(self.callback, JSON.stringify(data), function(res) {
-			res.on('data', function(chunk) {  logger.debug(JSON.stringify(res.headers)); logger.debug(chunk.toString()); logger.debug(); });
+			res.on('data', function(chunk) { logger.debug('HTTP ' + res.statusCode); logger.debug(JSON.stringify(res.headers)); if(res.statusCode == 200) { logger.debug(chunk.toString()); } logger.debug(); });
 		}, function(e) {
 			logger.debug('error, disabling callback');
 			logger.debug(e);
 			self.callback = undefined;
 		});
 	});
+	/*
 	this.on('presence', function(data) {
 		if(!self.callback) return;
 
@@ -153,6 +154,7 @@ gtalk.prototype.login = function(cb) {
 			self.callback = undefined;
 		}, {'X-NotificationClass': '13'});
 	});
+	*/
 };
 
 gtalk.prototype.stripMessage = function(m) {

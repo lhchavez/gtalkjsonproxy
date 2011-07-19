@@ -73,9 +73,13 @@ var Log = function(level, module, stream) {
 Log.prototype.log = function(level, args) {
 	if (level <= this.level) {
 		var i = 1;
-		var msg = args[0].replace(/%s/g, function(){
-			return args[i++];
-		});
+		var msg = "";
+		
+		if(args.length > 0 && args[0]) {
+			args[0].replace(/%s/g, function(){
+				return args[i++];
+			});
+		}
 		
 		this.stream.write(
 			'[' + new Date().toUTCString() + ']'

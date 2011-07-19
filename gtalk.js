@@ -1,3 +1,5 @@
+var log = require('./util').log;
+
 function gtalk(username, auth) {
 	this.username = username;
 	this.server = username.split('@')[1];
@@ -126,20 +128,29 @@ gtalk.prototype.login = function(cb) {
 			});
 		}
 	});
-	
-	var defaultCallback = function(data) {
+
+	this.on('message', function(data) {
 		if(!self.callback) return;
 
 		self.post(self.callback, JSON.stringify(data), function(res) {
-			res.on('data', function(chunk) {  console.log(JSON.stringify(res.headers)); console.log(chunk.toString()); console.log(); });
+			res.on('data', function(chunk) {  log.debug(JSON.stringify(res.headers)); log.debug(chunk.toString()); log.debug(); });
 		}, function(e) {
-			console.log('error, disabling callback');
+			log.debug('error, disabling callback');
+			log.debug(e);
 			self.callback = undefined;
 		});
-	};
+	});
+	this.on('presence', function(data) {
+		if(!self.callback) return;
 
-	this.on('message', defaultCallback);
-	this.on('presence', defaultCallback);
+		self.post(self.callback, JSON.stringify(data), function(res) {
+			res.on('data', function(chunk) {  log.debug(JSON.stringify(res.headers)); log.debug(chunk.toString()); log.debug(); });
+		}, function(e) {
+			log.debug('error, disabling callback');
+			log.debug(e);
+			self.callback = undefined;
+		}, {'X-NotificationClass': '13'});
+	});
 };
 
 gtalk.prototype.stripMessage = function(m) {
@@ -191,7 +202,7 @@ gtalk.prototype.send = function(data, cb) {
 	this.sock.write(data, cb);
 };
 
-gtalk.prototype.post = function(url, data, cb, ecb) {
+gtalk.prototype.post = function(url, data, cb, ecb, extraHeaders) {
 	var params = url.match(/(https?):\/\/([a-z.-]+)(?::([0-9]+))?(\/.*)?$/);
 	
 	var buf = new Buffer(data);
@@ -203,6 +214,14 @@ gtalk.prototype.post = function(url, data, cb, ecb) {
 		method: 'POST',
 		headers: {'X-NotificationClass': '3', 'Content-Type': 'text/json', 'Content-Length': buf.length}
 	};
+	
+	if(extraHeaders) {
+		for(var h in extraHeaders) {
+			if(typeof extraHeaders[h] != 'string') continue;
+			
+			options.headers[h] = extraHeaders[h];
+		}
+	}
 
 	if(!options.port) {
 		if(params[1] == 'http') options.port = 80;

@@ -192,7 +192,7 @@ gtalk.prototype.send = function(data, cb) {
 };
 
 gtalk.prototype.post = function(url, data, cb, ecb) {
-	var params = url.match(/(https?):\/\/([^\/:]*)(?::([^\/]*))?(.*)?/);
+	var params = url.match(/(https?):\/\/([a-z.-]+)(?::([0-9]+))?(\/.*)?$/);
 	
 	var buf = new Buffer(data);
 

@@ -69,10 +69,16 @@ http.createServer(function (req, res) {
 			break;
 		case '/register':
 			handlePOST(res, req, ['token', 'url'], function(post) {
-				console.log("[200] " + req.method + " to " + req.url);
-				res.writeHead(200, "OK", {'Content-Type': 'text/plain'});
-				res.end();
-				mapping[post.token].register(post.url);
+				if(!post.url.match(/(https?):\/\/([a-z.-]+)(?::([0-9]+))?(\/.*)?$/)) {
+					log.notice("[400] " + req.method + " to " + req.url);
+					res.writeHead(400, "Bad Request", {'Content-Type': 'text/plain'});
+					res.end('400 - Bad Request');
+				} else {
+					console.log("[200] " + req.method + " to " + req.url);
+					res.writeHead(200, "OK", {'Content-Type': 'text/plain'});
+					res.end();
+					mapping[post.token].register(post.url);
+				}
 			});
 
 		default:

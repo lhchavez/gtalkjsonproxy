@@ -9,6 +9,7 @@ function gtalk(username, auth) {
 	this.sock = undefined;
 	this.rosterList = {};
 	this.callback = undefined;
+	this.sendRaw = true;
 };
 
 gtalk.prototype = new process.EventEmitter();
@@ -129,17 +130,73 @@ gtalk.prototype.login = function(cb) {
 		}
 	});
 
-	this.on('message', function(data) {
+	var pushNotification = function(data) {
 		if(!self.callback) return;
 
-		self.post(self.callback, JSON.stringify(data), function(res) {
-			res.on('data', function(chunk) { logger.debug('HTTP ' + res.statusCode); logger.debug(JSON.stringify(res.headers)); if(res.statusCode == 200) { logger.debug(chunk.toString()); } logger.debug(); });
-		}, function(e) {
-			logger.debug('error, disabling callback');
-			logger.debug(e);
-			self.callback = undefined;
-		});
-	});
+		if(self.sendRaw) {
+			self.post(self.callback, JSON.stringify(data), function(res) {
+				var body = "";
+				res.on('data', function(chunk) {
+					body += chunk;
+				}).on('end', function() {
+					logger.debug('mira los headers: ' + JSON.stringify(res.headers));
+					//"x-notificationstatus":"Suppressed"
+	
+					if(res.statusCode != 200) {
+						logger.debug('error, disabling callback!');
+						self.callback = undefined;
+					} else if(res.headers['x-notificationstatus'] == 'Suppressed') {
+						// switch to toast NOW
+						logger.debug('notification suppressed, sending toast instead');
+						self.sendRaw = false;
+						pushNotification(data);
+					} else {
+						logger.debug('another message sent: %s',  body);
+					}
+				});
+			}, function(e) {
+				logger.debug('error, disabling callback');
+				logger.debug(e);
+				self.callback = undefined;
+			});
+		} else if(data.body) {
+			var name = data.from.split('/')[0];
+
+			if(self.rosterList[name] && self.rosterList[name].name) {
+				name = self.rosterList[name].name;
+			}
+
+			logger.debug('the data %s', JSON.stringify(data));
+			logger.debug('the name %s', name);
+
+			var toast = '<?xml version="1.0" encoding="utf-8"?>\n<wp:Notification xmlns:wp="WPNotification"><wp:Toast>';
+			toast += '<wp:Text1>' + xmlEscape(name) + '</wp:Text1><wp:Text2>' + xmlEscape(data.body) + '</wp:Text2>';
+			toast += '<wp:Param>/Chat.xaml</wp:Param></wp:Toast></wp:Notification>';
+
+			logger.debug('gonna send some toast! %s', toast);
+
+			self.post(self.callback, toast, function(res) {
+				var body = "";
+				res.on('data', function(chunk) {
+					body += chunk;
+				}).on('end', function() {
+					logger.debug('mira los headers: ' + JSON.stringify(res.headers));
+	
+					if(res.statusCode != 200) {
+						logger.debug('error, disabling callback!');
+						self.callback = undefined;
+					} else {
+						logger.debug('another message sent: %s',  body);
+					}
+				});
+			}, function(e) {
+				logger.debug('error, disabling callback');
+				logger.debug(e);
+				self.callback = undefined;
+			}, {'X-NotificationClass': '2', 'X-WindowsPhone-Target': 'toast', 'Content-Type': 'text/xml'});
+		}
+	};
+	this.on('message', pushNotification);
 	/*
 	this.on('presence', function(data) {
 		if(!self.callback) return;
@@ -248,9 +305,9 @@ gtalk.prototype.message = function(to, body, cb) {
 	}
 	
 	if(this.rosterList[jid].otr) {
-		this.send("<message from='" + this.jid + "' to='" + to + "'><body>" + body + "</body><nos:x value='enabled' xmlns:nos='google:nosave' /><arc:record otr='true' xmlns:arc='http://jabber.org/protocol/archive' /></message>", cb);
+		this.send("<message from='" + xmlEscape(this.jid) + "' to='" + xmlEscape(to) + "'><body>" + xmlEscape(body) + "</body><nos:x value='enabled' xmlns:nos='google:nosave' /><arc:record otr='true' xmlns:arc='http://jabber.org/protocol/archive' /></message>", cb);
 	} else {
-		this.send("<message from='" + this.jid + "' to='" + to + "'><body>" + body + "</body><nos:x value='disabled' xmlns:nos='google:nosave' /><arc:record otr='false' xmlns:arc='http://jabber.org/protocol/archive' /></message>", cb);
+		this.send("<message from='" + xmlEscape(this.jid) + "' to='" + xmlEscape(to) + "'><body>" + xmlEscape(body) + "</body><nos:x value='disabled' xmlns:nos='google:nosave' /><arc:record otr='false' xmlns:arc='http://jabber.org/protocol/archive' /></message>", cb);
 	}
 };
 
@@ -266,6 +323,7 @@ gtalk.prototype.roster = function(cb) {
 
 gtalk.prototype.register = function(url) {
 	this.callback = url;
+	this.sendRaw = true;
 };
 
 gtalk.prototype.logout = function() {
@@ -274,6 +332,14 @@ gtalk.prototype.logout = function() {
 		self.sock.destroy();
 	});
 };
+
+function xmlEscape(str) {
+	return str.replace('&', '&amp;')
+		.replace("'", '&apos;')
+		.replace('"', '&quot;')
+		.replace('<', '&lt;')
+		.replace('>', '&gt;');
+}
 
 module.exports = function(username, auth) {
 	return new gtalk(username, auth);

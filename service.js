@@ -4,7 +4,7 @@ var util = require('util');
 var logging = require('./log');
 var fs = require('fs');
 
-logging.rootLogger.level = logging.DEBUG;
+logging.rootLogger.level = logging.INFO;
 
 var logger = logging.log('service');
  
@@ -17,7 +17,18 @@ var options = {
 https.createServer(options, function (req, res) {
 	switch(req.url) {
 		case '/login':
-			handlePOST(res, req, ['username', 'auth'], function(post) {			
+			handlePOST(res, req, ['username', 'auth'], function(post) {
+					for(var token in mapping) {
+						if(mapping[token].username == post.username && mapping[token].auth == post.auth) {
+							logger.notice("[200] " + req.method + " to " + req.url);
+							res.writeHead(200, "OK", {'Content-Type': 'text/plain'});
+
+							res.end(token);
+							logger.debug('recycled the token ' + token);
+							return;
+						}	
+					}
+
 					var gtalk = require('./gtalk')(post.username, post.auth);
 
 					gtalk.on('auth_failure', function(details) {
@@ -76,6 +87,7 @@ https.createServer(options, function (req, res) {
 			handlePOST(res, req, ['token', 'url'], function(post) {
 				if(!post.url.match(/(https?):\/\/([a-z0-9.-]+)(?::([0-9]+))?(\/.*)?$/)) {
 					logger.notice("[400] " + req.method + " to " + req.url);
+					logger.debug('what the url? %s', post.url);
 					res.writeHead(400, "Bad Request", {'Content-Type': 'text/plain'});
 					res.end('400 - Bad Request');
 				} else {
@@ -86,6 +98,7 @@ https.createServer(options, function (req, res) {
 				}
 			});
 
+			break;
 		default:
 			logger.notice("[404] " + req.method + " to " + req.url);
 			res.writeHead(404, "Not found", {'Content-Type': 'text/plain'});
@@ -122,6 +135,15 @@ function handlePOST(res, req, params, cb) {
 		}).on('end', function() {
 			// parse the received body data
 			var post = querystring.parse(fullBody);
+
+			logger.debug('\tRequest %s ', JSON.stringify(post));
+
+			var tokens = [];
+			for(var tokn in mapping) {
+				tokens.push(tokn);
+			}
+
+			logger.debug('\tTokens %s ', JSON.stringify(tokens));
 			
 			var valid = true;
 			
@@ -134,6 +156,8 @@ function handlePOST(res, req, params, cb) {
 		
 			if(!valid) {
 				logger.notice("[400] " + req.method + " to " + req.url);
+				logger.debug("something was missing.");
+				logger.debug("expecting %s, got %s", JSON.stringify(params), JSON.stringify(post));
 				res.writeHead(400, "Bad Request", {'Content-Type': 'text/plain'});
 				res.end('400 - Bad Request');
 			} else if(params.indexOf('token') != -1 && !mapping[post.token]) {

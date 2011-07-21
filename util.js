@@ -11,19 +11,22 @@ module.exports.crypto = {
 	},
 	
 	cipher: function(data) {
-		var cipher = this.crypto.createCipher('aes-256-cbc', this.key);
+		var salt = module.exports.randomString(32 * 6);
 		
-		return data.length + ":" + cipher.update(data, 'utf8', 'hex') + cipher.final('hex');
+		var cipher = this.crypto.createCipher('aes-256-cbc', salt + '$' + this.key);
+		
+		return data.length + ":" + salt + ":" + cipher.update(data, 'utf8', 'hex') + cipher.final('hex');
 	},
 	
 	decipher: function(data) {
-		var decipher = this.crypto.createDecipher('aes-256-cbc', this.key);
-		
 		var sd = data.split(':');
 		
-		var len = parseInt(sd[0]);
+		var len  = parseInt(sd[0]);
+		var salt = sd[1];
 		
-		return (decipher.update(sd[1], 'hex', 'utf8') + decipher.final('utf8')).substring(0, len);
+		var decipher = this.crypto.createDecipher('aes-256-cbc', salt + '$' + this.key);
+		
+		return (decipher.update(sd[2], 'hex', 'utf8') + decipher.final('utf8')).substring(0, len);
 	}
 };
 

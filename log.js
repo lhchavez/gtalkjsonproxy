@@ -76,21 +76,41 @@ Log.prototype.log = function(level, args) {
 		var msg = "";
 		
 		if(args[0]) {
-			if(typeof(args[0]) == 'function') {
-				args[0] = args[0]();
-			}
+			var fmt = args[0];
 			
-			msg = args[0].replace(/%s/g, function(){
-				if(args[i]) {
-					if(typeof(args[i]) == 'function') {
-						return args[i++]();
+			if(typeof(fmt) == 'function') {
+				fmt = fmt();
+			}
+
+			if(typeof(fmt) == 'string') {
+				msg = fmt.replace(/%s/g, function(){
+					if(args[i]) {
+						if(typeof(args[i]) == 'function') {
+							return args[i++]();
+						} else if(typeof(args[i]) == 'string') {
+							return args[i++];
+						} else {
+							return JSON.stringify(args[i++]);
+						}
 					} else {
-						return args[i++];
+						return "";
 					}
-				} else {
-					return "";
+				});
+			} else {
+				msg = JSON.stringify(args[0]);
+				
+				for(i = 1; i < args.length; i++) {
+					msg += ", ";
+					
+					if(typeof(args[i]) == 'function') {
+						msg += args[i]();
+					} else if(typeof(args[i]) == 'string') {
+						msg += args[i];
+					} else {
+						msg += JSON.stringify(args[i]);
+					}
 				}
-			});
+			}
 		}
 		
 		this.stream.write(

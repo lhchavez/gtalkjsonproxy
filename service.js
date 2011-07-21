@@ -39,8 +39,14 @@ https.createServer(options, function (req, res) {
 						logger.notice("[401] " + req.method + " to " + req.url);
 						res.writeHead(401, "Authentication Required", {'Content-Type': 'text/plain'});
 						res.end('401 - Authentication Required');
-					}).on('message', function(data) { logger.debug(JSON.stringify(data)); });
-					//.on('presence', function(data) { logger.debug(JSON.stringify(data)); });
+					}).on('disconnect', function() {						
+						logger.notice('session ended ' + mapping[gtalk.token].username);
+						mapping[gtalk.token].logout();
+						mapping[gtalk.token] = undefined;
+					}).on('message', function(data) {
+						logger.debug("message: %s", data);
+					});
+					//.on('presence', function(data) { logger.debug("message: %s", data); });
 
 					gtalk.login(function() {
 						logger.notice("[200] " + req.method + " to " + req.url);
@@ -65,6 +71,15 @@ https.createServer(options, function (req, res) {
 			});
 			
 			break;
+		case '/presence':
+			handlePOST(res, req, ['token', 'show'], function(post) {
+				logger.notice("[200] " + req.method + " to " + req.url);
+				res.writeHead(200, "OK", {'Content-Type': 'text/plain'});
+				res.end();
+				mapping[post.token].presence(post.show, post.status);
+			});
+			
+			break;
 		case '/roster':
 			handlePOST(res, req, ['token'], function(post) {
 				logger.notice("[200] " + req.method + " to " + req.url);
@@ -84,7 +99,7 @@ https.createServer(options, function (req, res) {
 				logger.notice("[200] " + req.method + " to " + req.url);
 				res.writeHead(200, "OK", {'Content-Type': 'text/json'});
 				mapping[post.token].messageQueue(function(msg) {
-					if(msg == null) {
+					if(msg === null) {
 						res.end();
 					} else {
 						res.write(msg + "\n");
@@ -140,14 +155,14 @@ function handlePOST(res, req, params, cb) {
 			// parse the received body data
 			var post = querystring.parse(fullBody);
 
-			logger.debug('\tRequest %s ', JSON.stringify(post));
+			logger.debug('\tRequest %s ', post);
 
 			var tokens = [];
 			for(var tokn in mapping) {
 				tokens.push(tokn);
 			}
 
-			logger.debug('\tTokens %s ', JSON.stringify(tokens));
+			logger.debug('\tTokens %s ', tokens);
 			
 			var valid = true;
 			
@@ -161,7 +176,7 @@ function handlePOST(res, req, params, cb) {
 			if(!valid) {
 				logger.notice("[400] " + req.method + " to " + req.url);
 				logger.debug("something was missing.");
-				logger.debug("expecting %s, got %s", JSON.stringify(params), JSON.stringify(post));
+				logger.debug("expecting %s, got %s", params, post);
 				res.writeHead(400, "Bad Request", {'Content-Type': 'text/plain'});
 				res.end('400 - Bad Request');
 			} else if(params.indexOf('token') != -1 && !mapping[post.token]) {
@@ -197,7 +212,11 @@ client.smembers('clients', function(err, clients) {
 				gtalk.on('auth_failure', function(details) {
 					logger.notice('unable to restore session for ' + gtalk.username);
 					client.srem('clients', c);
-				}).on('message', function(data) { logger.debug(function() { JSON.stringify(data); }); });
+				}).on('disconnect', function() {						
+					logger.notice('session ended ' + mapping[gtalk.token].username);
+					mapping[gtalk.token].logout();
+					mapping[gtalk.token] = undefined;
+				}).on('message', function(data) { logger.debug("message: %s", data); });
 
 				gtalk.login(function() {
 					logger.notice('session started ' + gtalk.username);

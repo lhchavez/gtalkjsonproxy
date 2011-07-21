@@ -98,17 +98,17 @@ Log.prototype.log = function(level, args) {
 				});
 			} else {
 				msg = JSON.stringify(args[0]);
+			}
 				
-				for(i = 1; i < args.length; i++) {
-					msg += ", ";
-					
-					if(typeof(args[i]) == 'function') {
-						msg += args[i]();
-					} else if(typeof(args[i]) == 'string') {
-						msg += args[i];
-					} else {
-						msg += JSON.stringify(args[i]);
-					}
+			for(; i < args.length; i++) {
+				msg += ", ";
+				
+				if(typeof(args[i]) == 'function') {
+					msg += args[i]();
+				} else if(typeof(args[i]) == 'string') {
+					msg += args[i];
+				} else {
+					msg += JSON.stringify(args[i]);
 				}
 			}
 		}

@@ -1,26 +1,33 @@
 var logger = require('./log').log('gtalk');
+var util = require('./util');
 var redis = require("redis"),
     client = redis.createClient();
 
 function gtalk(token, username, auth) {
+	logger.debug('instantiating with %s, %s %s', token, username, auth);
+	
 	if(typeof(token) == 'object') {
+		this.clientId = token.clientId;
 		this.token = token.token;
 		this.username = token.username;
 		this.auth = token.auth;
 		this.callback = token.callback;
 	} else {
+		this.clientId = 'client:' + util.randomString(128);
 		this.token = token;
 		this.username = username;
 		this.auth = auth;
 		this.callback = undefined;
 	}
 	
-	this.server = username.split('@')[1];
+	this.server = this.username.split('@')[1];
 	this.logged_in = false;
 	this.jid = undefined;
 	this.sock = undefined;
 	this.rosterList = {};
 	this.sendRaw = true;
+	
+	logger.debug(this);
 };
 
 gtalk.prototype = new process.EventEmitter();
@@ -37,6 +44,8 @@ gtalk.prototype.login = function(cb) {
 		s.write("<?xml version='1.0'?>\n<stream:stream to='" + self.server + "' xmlns='jabber:client' xmlns:stream='http://etherx.jabber.org/streams' version='1.0'>");
 	}).on('data', function(data) {
 		var str = data.toString('utf8');
+
+		logger.debug(str);
 	
 		if(str.indexOf('stream:features') != -1) {
 			s.write("<starttls xmlns='urn:ietf:params:xml:ns:xmpp-tls' />");
@@ -58,6 +67,8 @@ gtalk.prototype.login = function(cb) {
 			
 				ss.on('data', function(data) {
 					var str = data.toString('utf8');
+
+					logger.debug(str);
 				
 					if(str.indexOf('stream:features') != -1) {
 						if(self.logged_in) {
@@ -72,7 +83,7 @@ gtalk.prototype.login = function(cb) {
 						
 						ss.write("<stream:stream to='" + self.server + "' xmlns='jabber:client' xmlns:stream='http://etherx.jabber.org/streams' version='1.0'>");
 						
-						client.sadd('clients', 'client:' + self.token);
+						client.sadd('clients', self.clientId);
 						self.persist();
 					} else if(str.indexOf('failure') != -1) {
 						self.emit('auth_failure', str);
@@ -195,7 +206,7 @@ gtalk.prototype.login = function(cb) {
 
 			var toast = '<?xml version="1.0" encoding="utf-8"?>\n<wp:Notification xmlns:wp="WPNotification"><wp:Toast>';
 			toast += '<wp:Text1>' + xmlEscape(name) + '</wp:Text1><wp:Text2>' + xmlEscape(data.body) + '</wp:Text2>';
-			toast += '<wp:Param>/Chat.xaml</wp:Param></wp:Toast></wp:Notification>';
+			toast += '<wp:Param>/Chat.xaml?from=' + encodeURIComponent(data.from) + '</wp:Param></wp:Toast></wp:Notification>';
 
 			logger.debug('gonna send some toast! %s', toast);
 
@@ -328,10 +339,14 @@ gtalk.prototype.message = function(to, body, cb) {
 		jid = jid.split("/")[0]
 	}
 	
-	if(this.rosterList[jid].otr) {
-		this.send("<message from='" + xmlEscape(this.jid) + "' to='" + xmlEscape(to) + "'><body>" + xmlEscape(body) + "</body><nos:x value='enabled' xmlns:nos='google:nosave' /><arc:record otr='true' xmlns:arc='http://jabber.org/protocol/archive' /></message>", cb);
+	if(!this.rosterList[jid]) {
+		logger.warn('cannot send message to %s', jid);
 	} else {
-		this.send("<message from='" + xmlEscape(this.jid) + "' to='" + xmlEscape(to) + "'><body>" + xmlEscape(body) + "</body><nos:x value='disabled' xmlns:nos='google:nosave' /><arc:record otr='false' xmlns:arc='http://jabber.org/protocol/archive' /></message>", cb);
+		if(this.rosterList[jid] && this.rosterList[jid].otr) {
+			this.send("<message from='" + xmlEscape(this.jid) + "' to='" + xmlEscape(to) + "'><body>" + xmlEscape(body) + "</body><nos:x value='enabled' xmlns:nos='google:nosave' /><arc:record otr='true' xmlns:arc='http://jabber.org/protocol/archive' /></message>", cb);
+		} else {
+			this.send("<message from='" + xmlEscape(this.jid) + "' to='" + xmlEscape(to) + "'><body>" + xmlEscape(body) + "</body><nos:x value='disabled' xmlns:nos='google:nosave' /><arc:record otr='false' xmlns:arc='http://jabber.org/protocol/archive' /></message>", cb);
+		}
 	}
 };
 
@@ -352,14 +367,16 @@ gtalk.prototype.register = function(url) {
 };
 
 gtalk.prototype.messageQueue = function(cb) {
-	client.lrange('messages:' + this.username, 0, -1, function(err, messages) {
+	var self = this;
+	
+	client.lrange('messages:' + self.username, 0, -1, function(err, messages) {
 		if(messages == null) return;
 		
 		messages.forEach(cb);
 		
 		cb(null);
 		
-		client.ltrim(messages.length + 1, -1);
+		client.ltrim('messages:' + self.username, messages.length + 1, -1);
 	});
 };
 
@@ -370,17 +387,18 @@ gtalk.prototype.logout = function() {
 		self.sock.destroy();
 	});
 	
-	client.srem('clients', 'client:' + self.token);
-	client.del('client:' + self.token);
+	client.srem('clients', self.clientId);
+	client.del(self.clientId);
 };
 
 gtalk.prototype.persist = function() {
-	client.set('client:' + this.token, JSON.stringify({
+	client.set(this.clientId, util.crypto.cipher(JSON.stringify({
+		clientId: this.clientId,
 		token: this.token,
 		username: this.username,
 		auth: this.auth,
 		callback: this.callback
-	}));
+	})));
 };
 
 function xmlEscape(str) {
@@ -391,6 +409,6 @@ function xmlEscape(str) {
 		.replace('>', '&gt;');
 }
 
-module.exports = function(username, auth) {
-	return new gtalk(username, auth);
+module.exports = function(token, username, auth) {
+	return new gtalk(token, username, auth);
 };

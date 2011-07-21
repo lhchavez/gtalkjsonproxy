@@ -1,12 +1,12 @@
 var https = require('https');
 var querystring = require('querystring');
-var util = require('util');
+var util = require('./util');
 var logging = require('./log');
 var fs = require('fs');
 var redis = require("redis"),
     client = redis.createClient();
 
-logging.rootLogger.level = logging.INFO;
+logging.rootLogger.level = logging.DEBUG;
 
 var logger = logging.log('service');
  
@@ -16,6 +16,8 @@ var options = {
 	key: fs.readFileSync('server.key'),
 	cert: fs.readFileSync('server.crt')
 };
+
+util.crypto.init(fs.readFileSync('crypt.key'));
 
 https.createServer(options, function (req, res) {
 	switch(req.url) {
@@ -31,7 +33,7 @@ https.createServer(options, function (req, res) {
 						return;
 					}
 
-					var gtalk = require('./gtalk')(randomString(96), post.username, post.auth);
+					var gtalk = require('./gtalk')(util.randomString(96), post.username, post.auth);
 
 					gtalk.on('auth_failure', function(details) {
 						logger.notice("[401] " + req.method + " to " + req.url);
@@ -82,10 +84,10 @@ https.createServer(options, function (req, res) {
 				logger.notice("[200] " + req.method + " to " + req.url);
 				res.writeHead(200, "OK", {'Content-Type': 'text/json'});
 				mapping[post.token].messageQueue(function(msg) {
-					if(ros == null) {
+					if(msg == null) {
 						res.end();
 					} else {
-						res.write(JSON.stringify(msg) + "\n");
+						res.write(msg + "\n");
 					}
 				});
 			});
@@ -126,24 +128,6 @@ https.createServer(options, function (req, res) {
 			break;
 	}
 }).listen(443);
-
-function randomString(bits) {
-	var rand, i;
-	var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-/';
-	var ret = '';
-	
-	// in v8, Math.random() yields 32 pseudo-random bits (in spidermonkey it gives 53)
-	while(bits > 0) {
-		rand = Math.floor(Math.random()*0x100000000); // 32-bit integer
-		 
-		// base 64 means 6 bits per character, so we use the top 30 bits from rand to give 30/6=5 characters.
-		for(i = 26; i > 0 && bits > 0; i -= 6, bits -= 6) {
-			ret += chars[0x3F & rand >>> i];
-		}
-	}
-	
-	return ret;
-}
 
 function handlePOST(res, req, params, cb) {
 	if(req.method == 'POST') {
@@ -204,7 +188,11 @@ client.smembers('clients', function(err, clients) {
 	clients.forEach(function (c) {
 		client.get(c, function (err, data) {
 			if(data) {
-				var gtalk = require('./gtalk')(JSON.parse(data));
+				var deciphered = util.crypto.decipher(data);
+				
+				logger.debug(deciphered);
+				
+				var gtalk = require('./gtalk')(JSON.parse(deciphered));
 
 				gtalk.on('auth_failure', function(details) {
 					logger.notice('unable to restore session for ' + gtalk.username);

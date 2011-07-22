@@ -55,3 +55,80 @@ module.exports.randomString = function(bits) {
 	
 	return ret;
 };
+
+var XmlStream = module.exports.XmlStream = function() {
+	this.good = "";
+	this.remaining = "";
+	this.ptr = 0;
+	this.state = "text";
+	this.nesting = 0;
+	this.tag = /<(\/?)\s*([^ >/]+)[^>/]*(\/?)>/g;
+	this.utf = "";
+};
+
+XmlStream.prototype = new process.EventEmitter();
+
+XmlStream.prototype.update = function(buf, offset, len) {
+	if(typeof offset == 'undefined') offset = 0;
+	if(typeof len == 'undefined') len = buf.length - offset;
+	
+	if(len <= 0) return;
+	
+	var nextUtf = "";
+	
+	if((buf[offset+len-1] & 0x80) != 0) {
+		// oh oh, the last character may be an incomplete UTF8 character.
+		
+		var origLen = len;
+		var utfCharStart = offset + (--len);
+		
+		while(utfCharStart >= offset && (buf[utfCharStart] & 0xC0) == 0x80) {
+			utfCharStart--;
+			len--;
+		}
+		
+		if(utfCharStart < offset) {
+			this.utf += buf.slice(offset, origLen).toString('binary');
+			
+			return;
+		} else {
+			nextUtf = buf.slice(utfCharStart, origLen).toString('binary');
+		}
+	}
+	
+	if(this.utf.length == 0) {
+		this.remaining += buf.slice(offset, offset + len).toString('utf8');
+	} else {
+		var newBuf = new Buffer(this.utf.length + len);
+		
+		newBuf.write(this.utf, 0, 'binary');
+		buf.copy(newBuf, this.utf.length, offset, offset + len);
+		
+		this.remaining += newBuf.toString('utf8');
+	}
+	
+	this.utf = nextUtf;
+
+	var m;
+	var begin = 0;
+	var last = 0;
+	
+	while ((m = this.tag.exec(this.remaining)) != null) {
+		last = this.tag.lastIndex;
+		
+		if(m[1] == '/') {
+			this.nesting--;
+		} else if(m[3] != '/') {
+			this.nesting++;
+		}
+		
+		if(this.nesting == 0) {
+			this.emit('data', this.good + this.remaining.substring(begin, last));
+			begin = last;
+			this.good = '';
+		}
+	}
+	
+	this.good += this.remaining.substring(begin, last);
+	this.remaining = this.remaining.substring(last);
+};

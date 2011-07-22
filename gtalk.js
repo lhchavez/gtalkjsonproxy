@@ -9,7 +9,7 @@ var xaTimeout = 105 * 60 * 1000; // 2h
 var disconnectTimeout = 10 * 60 * 60 * 1000; // 12h
 
 function gtalk(token, username, auth) {
-	logger.debug('instantiating with %s, %s %s', token, username, auth);
+	logger.trace('instantiating with %s, %s %s', token, username, auth);
 	
 	if(typeof(token) == 'object') {
 		this.clientId = token.clientId;
@@ -48,7 +48,7 @@ function gtalk(token, username, auth) {
 		}
 	});
 	
-	logger.debug("gtalk instance created: %s", this);
+	logger.trace("gtalk instance created: %s", this);
 };
 
 gtalk.prototype = new process.EventEmitter();
@@ -66,7 +66,7 @@ gtalk.prototype.login = function(cb) {
 	}).on('data', function(data) {
 		var str = data.toString('utf8');
 
-		logger.debug(str);
+		logger.trace(str);
 	
 		if(str.indexOf('stream:features') != -1) {
 			s.write("<starttls xmlns='urn:ietf:params:xml:ns:xmpp-tls' />");
@@ -89,7 +89,7 @@ gtalk.prototype.login = function(cb) {
 				ss.on('data', function(data) {
 					var str = data.toString('utf8');
 
-					logger.debug(str);
+					logger.trace(str);
 				
 					if(str.indexOf('stream:features') != -1) {
 						if(self.logged_in) {
@@ -203,7 +203,7 @@ gtalk.prototype.login = function(cb) {
 						self.sendRaw = false;
 						pushNotification(data);
 					} else {
-						logger.debug('another message sent: %s',  body);
+						logger.trace('another message sent: %s',  body);
 					}
 				});
 			}, function(e) {
@@ -222,14 +222,14 @@ gtalk.prototype.login = function(cb) {
 				name = self.rosterList[name].name;
 			}
 
-			logger.debug('the data %s', data);
-			logger.debug('the name %s', name);
+			logger.trace('the data %s', data);
+			logger.trace('the name %s', name);
 
 			var toast = '<?xml version="1.0" encoding="utf-8"?>\n<wp:Notification xmlns:wp="WPNotification"><wp:Toast>';
 			toast += '<wp:Text1>' + xmlEscape(name) + '</wp:Text1><wp:Text2>' + xmlEscape(data.otr ? '(OTR)' : data.body) + '</wp:Text2>';
 			toast += '<wp:Param>/Chat.xaml?from=' + encodeURIComponent(data.from) + '</wp:Param></wp:Toast></wp:Notification>';
 
-			logger.debug('gonna send some toast! %s', toast);
+			logger.trace('gonna send some toast! %s', toast);
 
 			self.post(self.callback, toast, function(res) {
 				var body = "";
@@ -242,7 +242,7 @@ gtalk.prototype.login = function(cb) {
 						logger.debug('error, disabling callback!');
 						self.callback = undefined;
 					} else {
-						logger.debug('another message sent: %s',  body);
+						logger.trace('another message sent: %s',  body);
 					}
 				});
 			}, function(e) {
@@ -414,8 +414,6 @@ gtalk.prototype.presence = function(show, status, cb, userset, force) {
 			msg += " />";
 		}
 		
-		logger.debug("setting status to %s", msg);
-		
 		self.send(msg, cb);
 	}
 	
@@ -463,11 +461,11 @@ gtalk.prototype.messageQueue = function(cb) {
 		if(messages == null) return;
 		
 		messages.forEach(function(msg) {
-			logger.debug("sending a message", msg);
+			logger.trace("sending a message", msg);
 			cb(msg);
 		});
 		
-		logger.debug("end of stream");
+		logger.trace("end of stream");
 		cb(null);
 		
 		client.ltrim('messages:' + self.username, messages.length + 1, -1);

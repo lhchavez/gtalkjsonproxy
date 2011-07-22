@@ -34,8 +34,21 @@ function gtalk(token, username, auth) {
 	this.rosterList = {};
 	this.sendRaw = true;
 	this.timer = undefined;
+	this.disconnected = false;
 	
-	logger.debug(this);
+	var self = this;
+	
+	client.get('key:' + this.username, function(err, data) {
+		if(data) {
+			self.userKey = util.crypto.decipher(data);
+		} else {
+			self.userKey = util.randomString(66);
+			
+			client.set('key:' + self.username, util.crypto.cipher(self.userKey));
+		}
+	});
+	
+	logger.debug("gtalk instance created: %s", this);
 };
 
 gtalk.prototype = new process.EventEmitter();
@@ -157,7 +170,7 @@ gtalk.prototype.login = function(cb) {
 								parser.parseString("<x>" + d.toString('utf8') + "</x>");
 							});
 							
-							self.presence(self.status.show, self.status.status);
+							self.presence(self.status.show, self.status.status, function() {}, false, true);
 						}
 					}
 				});
@@ -167,12 +180,12 @@ gtalk.prototype.login = function(cb) {
 
 	var pushNotification = function(data) {
 		if(!self.callback) {
-			client.rpush('messages:' + self.username, JSON.stringify(data));
+			client.rpush('messages:' + self.username, util.crypto.cipher(JSON.stringify(data), self.userKey, 24));
 			return;
 		}
 
 		if(self.sendRaw) {
-			self.post(self.callback, JSON.stringify(data), function(res) {
+			self.post(self.callback, util.crypto.cipher(JSON.stringify(data), self.userKey, 24), function(res) {
 				var body = "";
 				res.on('data', function(chunk) {
 					body += chunk;
@@ -203,7 +216,7 @@ gtalk.prototype.login = function(cb) {
 		} else if(data.body) {
 			var name = data.from.split('/')[0];
 			
-			client.rpush('messages:' + self.username, JSON.stringify(data));
+			client.rpush('messages:' + self.username, util.crypto.cipher(JSON.stringify(data), self.userKey, 24));
 
 			if(self.rosterList[name] && self.rosterList[name].name) {
 				name = self.rosterList[name].name;
@@ -213,7 +226,7 @@ gtalk.prototype.login = function(cb) {
 			logger.debug('the name %s', name);
 
 			var toast = '<?xml version="1.0" encoding="utf-8"?>\n<wp:Notification xmlns:wp="WPNotification"><wp:Toast>';
-			toast += '<wp:Text1>' + xmlEscape(name) + '</wp:Text1><wp:Text2>' + xmlEscape(data.body) + '</wp:Text2>';
+			toast += '<wp:Text1>' + xmlEscape(name) + '</wp:Text1><wp:Text2>' + xmlEscape(data.otr ? '(OTR)' : data.body) + '</wp:Text2>';
 			toast += '<wp:Param>/Chat.xaml?from=' + encodeURIComponent(data.from) + '</wp:Param></wp:Toast></wp:Notification>';
 
 			logger.debug('gonna send some toast! %s', toast);
@@ -288,7 +301,7 @@ gtalk.prototype.stripPresence = function(p) {
 			orig[x] = pre[x];
 		}
 		
-		if(!pre.type && orig.type) orig.type = undefined;
+		if(!pre.type && orig.type) delete orig.type;
 	}
 	
 	return pre;
@@ -303,7 +316,9 @@ gtalk.prototype.stripRoster = function(r) {
 };
 
 gtalk.prototype.send = function(data, cb) {
-	this.sock.write(data, cb);
+	if(!this.disconnected) {
+		this.sock.write(data, cb);
+	}
 };
 
 gtalk.prototype.post = function(url, data, cb, ecb, extraHeaders) {
@@ -360,7 +375,7 @@ gtalk.prototype.message = function(to, body, cb) {
 	self.presence(self.status.userset, self.status.status);
 };
 
-gtalk.prototype.presence = function(show, status, cb, userset) {
+gtalk.prototype.presence = function(show, status, cb, userset, force) {
 	var valid = ["available", "unavailable", "away", "chat", "dnd", "xa"],
 	    self = this;
 	
@@ -368,7 +383,7 @@ gtalk.prototype.presence = function(show, status, cb, userset) {
 		show = undefined;
 	}
 	
-	if(show != self.status.show || status != self.status.status) {	
+	if(force || show != self.status.show || status != self.status.status) {	
 		self.status.show = show;
 		self.status.status = status;
 	
@@ -398,9 +413,11 @@ gtalk.prototype.presence = function(show, status, cb, userset) {
 		} else { 
 			msg += " />";
 		}
+		
+		logger.debug("setting status to %s", msg);
+		
+		self.send(msg, cb);
 	}
-	
-	self.send(msg, cb);
 	
 	if(self.timer) {
 		timers.clearTimeout(self.timer);
@@ -435,6 +452,8 @@ gtalk.prototype.register = function(url) {
 	this.callback = url;
 	this.sendRaw = true;
 	this.persist();
+	
+	this.presence(this.status.userset, this.status.status);
 };
 
 gtalk.prototype.messageQueue = function(cb) {
@@ -461,6 +480,8 @@ gtalk.prototype.logout = function(service) {
 	this.send("</stream:stream>", function() {
 		self.sock.destroy();
 	});
+	
+	this.disconnected = true;
 	
 	client.srem('clients', self.clientId);
 	client.del(self.clientId);

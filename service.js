@@ -41,8 +41,7 @@ https.createServer(options, function (req, res) {
 						res.end('401 - Authentication Required');
 					}).on('disconnect', function() {						
 						logger.notice('session ended ' + mapping[gtalk.token].username);
-						mapping[gtalk.token].logout();
-						mapping[gtalk.token] = undefined;
+						delete mapping[gtalk.token];
 					}).on('message', function(data) {
 						logger.debug("message: %s", data);
 					});
@@ -77,6 +76,14 @@ https.createServer(options, function (req, res) {
 				res.writeHead(200, "OK", {'Content-Type': 'text/plain'});
 				res.end();
 				mapping[post.token].presence(post.show, post.status);
+			});
+			
+			break;
+		case '/key':
+			handlePOST(res, req, ['token'], function(post) {
+				logger.notice("[200] " + req.method + " to " + req.url);
+				res.writeHead(200, "OK", {'Content-Type': 'text/plain'});
+				res.end(mapping[post.token].userKey);
 			});
 			
 			break;
@@ -116,7 +123,7 @@ https.createServer(options, function (req, res) {
 				
 				logger.notice('session ended ' + mapping[post.token].username);
 				mapping[post.token].logout();
-				mapping[post.token] = undefined;
+				delete mapping[post.token];
 			});
 			
 			break;
@@ -214,8 +221,7 @@ client.smembers('clients', function(err, clients) {
 					client.srem('clients', c);
 				}).on('disconnect', function() {						
 					logger.notice('session ended ' + mapping[gtalk.token].username);
-					mapping[gtalk.token].logout();
-					mapping[gtalk.token] = undefined;
+					delete mapping[gtalk.token];
 				}).on('message', function(data) { logger.debug("message: %s", data); });
 
 				gtalk.login(function() {

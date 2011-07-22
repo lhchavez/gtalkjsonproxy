@@ -43,7 +43,7 @@ https.createServer(options, function (req, res) {
 						logger.notice('session ended ' + mapping[gtalk.token].username);
 						delete mapping[gtalk.token];
 					}).on('message', function(data) {
-						logger.debug("message: %s", data);
+						logger.trace("message: %s", data);
 					});
 					//.on('presence', function(data) { logger.debug("message: %s", data); });
 
@@ -84,6 +84,16 @@ https.createServer(options, function (req, res) {
 				logger.notice("[200] " + req.method + " to " + req.url);
 				res.writeHead(200, "OK", {'Content-Type': 'text/plain'});
 				res.end(mapping[post.token].userKey);
+			});
+			
+			break;
+		case '/photo':
+			handlePOST(res, req, ['token', 'jid'], function(post) {
+				mapping[post.token].photo(post.jid, function(type, photo) {
+					logger.notice("[200] " + req.method + " to " + req.url);
+					res.writeHead(200, "OK", {'Content-Type': type, 'Content-Length': photo.length});
+					res.end(photo, 'binary');
+				});
 			});
 			
 			break;
@@ -162,14 +172,14 @@ function handlePOST(res, req, params, cb) {
 			// parse the received body data
 			var post = querystring.parse(fullBody);
 
-			logger.debug('\tRequest %s ', post);
+			logger.trace('\tRequest %s ', post);
 
 			var tokens = [];
 			for(var tokn in mapping) {
 				tokens.push(tokn);
 			}
 
-			logger.debug('\tTokens %s ', tokens);
+			logger.trace('\tTokens %s ', tokens);
 			
 			var valid = true;
 			
@@ -183,7 +193,7 @@ function handlePOST(res, req, params, cb) {
 			if(!valid) {
 				logger.notice("[400] " + req.method + " to " + req.url);
 				logger.debug("something was missing.");
-				logger.debug("expecting %s, got %s", params, post);
+				logger.trace("expecting %s, got %s", params, post);
 				res.writeHead(400, "Bad Request", {'Content-Type': 'text/plain'});
 				res.end('400 - Bad Request');
 			} else if(params.indexOf('token') != -1 && !mapping[post.token]) {
@@ -212,7 +222,7 @@ client.smembers('clients', function(err, clients) {
 			if(data) {
 				var deciphered = util.crypto.decipher(data);
 				
-				logger.debug(deciphered);
+				logger.trace("unserialized data: %s", deciphered);
 				
 				var gtalk = require('./gtalk')(JSON.parse(deciphered));
 
@@ -222,7 +232,7 @@ client.smembers('clients', function(err, clients) {
 				}).on('disconnect', function() {						
 					logger.notice('session ended ' + mapping[gtalk.token].username);
 					delete mapping[gtalk.token];
-				}).on('message', function(data) { logger.debug("message: %s", data); });
+				}).on('message', function(data) { logger.trace("message: %s", data); });
 
 				gtalk.login(function() {
 					logger.notice('session started ' + gtalk.username);

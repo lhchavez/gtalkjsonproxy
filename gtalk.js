@@ -35,6 +35,8 @@ function gtalk(token, username, auth) {
 	this.sendRaw = true;
 	this.timer = undefined;
 	this.disconnected = false;
+	this.iqCallbacks = {};
+	this.iqCounter = 1;
 	
 	var self = this;
 	
@@ -144,30 +146,44 @@ gtalk.prototype.login = function(cb) {
 							roster_parser.parseString(roster_text);
 							
 							ss.removeAllListeners('data');
+							
+							var dataBuffer = "";
 							ss.addListener('data', function(d) {
-								var parser = new xml2js.Parser();
+								dataBuffer += d.toString('utf8');
 								
-								parser.addListener('end', function(result) {
-									if(result.presence) {
-										if(result.presence.length) {
-											for(i = 0; i < result.presence.length; i++) {
-												self.emit('presence', self.stripPresence(result.presence[i]));
-											}
-										} else {
-											self.emit('presence', self.stripPresence(result.presence));
-										}
-									} else if(result.message) {
-										if(result.message.length) {
-											for(i = 0; i < result.message.length; i++) {
-											self.emit('message', self.stripMessage(result.message[i]));
-											}
-										} else {
-											self.emit('message', self.stripMessage(result.message));
-										}
-									}
-								});
+								if(dataBuffer[dataBuffer.length - 1] == '>') {
+									var parser = new xml2js.Parser();
 								
-								parser.parseString("<x>" + d.toString('utf8') + "</x>");
+									parser.addListener('end', function(result) {
+										if(result.presence) {
+											if(result.presence.length) {
+												for(i = 0; i < result.presence.length; i++) {
+													self.emit('presence', self.stripPresence(result.presence[i]));
+												}
+											} else {
+												self.emit('presence', self.stripPresence(result.presence));
+											}
+										} else if(result.message) {
+											if(result.message.length) {
+												for(i = 0; i < result.message.length; i++) {
+												self.emit('message', self.stripMessage(result.message[i]));
+												}
+											} else {
+												self.emit('message', self.stripMessage(result.message));
+											}
+										} else if(result.iq) {
+											if(self.iqCallbacks[result.iq['@'].id]) {
+												self.iqCallbacks[result.iq['@'].id](result.iq);
+											
+												delete self.iqCallbacks[result.iq['@'].id];
+											}
+										}
+									});
+								
+									parser.parseString("<x>" + dataBuffer + "</x>");
+									
+									dataBuffer = "";
+								}
 							});
 							
 							self.presence(self.status.show, self.status.status, function() {}, false, true);
@@ -444,6 +460,21 @@ gtalk.prototype.roster = function(cb) {
 	}
 	
 	cb(null);
+};
+
+gtalk.prototype.photo = function(jid, cb) {
+	var id = "id_" + this.iqCounter++,
+	    base64_decode = require("base64").decode;
+	
+	var msg = "<iq from='" + this.jid + "' to='" + xmlEscape(jid) + "' type='get' id='" + id + "'><vCard xmlns='vcard-temp'/></iq>";
+	
+	logger.trace("sending vcard request: %s", msg);
+	
+	this.iqCallbacks[id] = function(iq) {
+		cb(iq.vCard.PHOTO.TYPE, base64_decode(iq.vCard.PHOTO.BINVAL));
+	};
+	
+	this.send(msg);
 };
 
 gtalk.prototype.register = function(url) {

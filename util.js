@@ -1,3 +1,5 @@
+var base64 = require('base64');
+
 module.exports.crypto = {
 	key: undefined,
 	crypto: require("crypto"),
@@ -10,23 +12,29 @@ module.exports.crypto = {
 		}
 	},
 	
-	cipher: function(data) {
-		var salt = module.exports.randomString(32 * 6);
+	cipher: function(data, key, saltSize) {
+		if (saltSize === undefined) saltSize = 32 * 6;
 		
-		var cipher = this.crypto.createCipher('aes-256-cbc', salt + '$' + this.key);
+		var salt = module.exports.randomString(saltSize),
+		    cipher = this.crypto.createCipher('aes-256-cbc', salt + '$' + ((typeof key === 'string') ? key : this.key)),
+		    buf = new Buffer(data, 'utf8');
 		
-		return data.length + ":" + salt + ":" + cipher.update(data, 'utf8', 'hex') + cipher.final('hex');
+		return buf.length + ":" + salt + ":" + base64.encode(new Buffer(cipher.update(buf, 'binary', 'binary') + cipher.final('binary'), 'binary'));
 	},
 	
-	decipher: function(data) {
-		var sd = data.split(':');
+	decipher: function(data, key) {
+		var sd = data.split(':'),
+		    len = parseInt(sd[0]),
+		    target = new Buffer(len),
+		    salt = sd[1],
+		    decipher = this.crypto.createDecipher('aes-256-cbc', salt + '$' + ((typeof key === 'string') ? key : this.key)),
+		    first = new Buffer(decipher.update(base64.decode(sd[2]), 'binary', 'binary'), 'binary'),
+		    end = new Buffer(decipher.final('binary'), 'binary');
 		
-		var len  = parseInt(sd[0]);
-		var salt = sd[1];
+		first.copy(target);
+		end.copy(target, first.length, 0, len - first.length);
 		
-		var decipher = this.crypto.createDecipher('aes-256-cbc', salt + '$' + this.key);
-		
-		return (decipher.update(sd[2], 'hex', 'utf8') + decipher.final('utf8')).substring(0, len);
+		return target.toString('utf8');
 	}
 };
 

@@ -62,7 +62,15 @@ exports.INFO = 6;
 
 exports.DEBUG = 7;
 
-var levelStr = ["EMERGENCY", "ALERT", "CRITICAL", "ERROR", "WARNING", "NOTICE", "INFO", "DEBUG"];
+/**
+ * Protocol tracing messages.
+ * 
+ * @type Number
+ */
+
+exports.TRACE = 8;
+
+var levelStr = ["EMERGENCY", "ALERT", "CRITICAL", "ERROR", "WARNING", "NOTICE", "INFO", "DEBUG", "TRACE"];
 
 var Log = function(level, module, stream) {
 	this.level = level;
@@ -210,6 +218,17 @@ Log.prototype.info = function(msg){
 
 Log.prototype.debug = function(msg){
 	this.log(exports.DEBUG, arguments);
+};
+
+/**
+* Log trace `msg`.
+*
+* @param  {String} msg
+* @api public
+*/
+
+Log.prototype.trace = function(msg){
+	this.log(exports.TRACE, arguments);
 };
 
 exports.rootLogger = new Log(exports.ERROR, 'root');

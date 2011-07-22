@@ -91,7 +91,7 @@ gtalk.prototype.login = function(cb) {
 				ss.on('data', function(data) {
 					var str = data.toString('utf8');
 
-					logger.trace(str);
+					logger.trace("raw, unbuffered data: %s", str);
 				
 					if(str.indexOf('stream:features') != -1) {
 						if(self.logged_in) {
@@ -145,46 +145,43 @@ gtalk.prototype.login = function(cb) {
 							
 							roster_parser.parseString(roster_text);
 							
-							ss.removeAllListeners('data');
+							var xmlStream = new util.XmlStream();
+							xmlStream.on('data', function(d) {
+								var parser = new xml2js.Parser();
+								
+								logger.trace("complete XML object: %s", d);
 							
-							var dataBuffer = "";
-							ss.addListener('data', function(d) {
-								dataBuffer += d.toString('utf8');
-								
-								if(dataBuffer[dataBuffer.length - 1] == '>') {
-									var parser = new xml2js.Parser();
-								
-									parser.addListener('end', function(result) {
-										if(result.presence) {
-											if(result.presence.length) {
-												for(i = 0; i < result.presence.length; i++) {
-													self.emit('presence', self.stripPresence(result.presence[i]));
-												}
-											} else {
-												self.emit('presence', self.stripPresence(result.presence));
+								parser.addListener('end', function(result) {
+									if(result.presence) {
+										if(result.presence.length) {
+											for(i = 0; i < result.presence.length; i++) {
+												self.emit('presence', self.stripPresence(result.presence[i]));
 											}
-										} else if(result.message) {
-											if(result.message.length) {
-												for(i = 0; i < result.message.length; i++) {
-												self.emit('message', self.stripMessage(result.message[i]));
-												}
-											} else {
-												self.emit('message', self.stripMessage(result.message));
-											}
-										} else if(result.iq) {
-											if(self.iqCallbacks[result.iq['@'].id]) {
-												self.iqCallbacks[result.iq['@'].id](result.iq);
-											
-												delete self.iqCallbacks[result.iq['@'].id];
-											}
+										} else {
+											self.emit('presence', self.stripPresence(result.presence));
 										}
-									});
-								
-									parser.parseString("<x>" + dataBuffer + "</x>");
-									
-									dataBuffer = "";
-								}
+									} else if(result.message) {
+										if(result.message.length) {
+											for(i = 0; i < result.message.length; i++) {
+											self.emit('message', self.stripMessage(result.message[i]));
+											}
+										} else {
+											self.emit('message', self.stripMessage(result.message));
+										}
+									} else if(result.iq) {
+										if(self.iqCallbacks[result.iq['@'].id]) {
+											self.iqCallbacks[result.iq['@'].id](result.iq);
+										
+											delete self.iqCallbacks[result.iq['@'].id];
+										}
+									}
+								});
+							
+								parser.parseString("<x>" + d + "</x>");
 							});
+							
+							ss.removeAllListeners('data');
+							ss.addListener('data', function(x) { logger.trace("adding to the xml stream: %s", x.toString('utf8')); xmlStream.update(x); });
 							
 							self.presence(self.status.show, self.status.status, function() {}, false, true);
 						}
@@ -471,7 +468,11 @@ gtalk.prototype.photo = function(jid, cb) {
 	logger.trace("sending vcard request: %s", msg);
 	
 	this.iqCallbacks[id] = function(iq) {
-		cb(iq.vCard.PHOTO.TYPE, base64_decode(iq.vCard.PHOTO.BINVAL));
+		if(iq['@'].type == 'error') {
+			cb('error');
+		} else {
+			cb(iq.vCard.PHOTO.TYPE, base64_decode(iq.vCard.PHOTO.BINVAL));
+		}
 	};
 	
 	this.send(msg);

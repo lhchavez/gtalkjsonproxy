@@ -62,7 +62,7 @@ var XmlStream = module.exports.XmlStream = function() {
 	this.ptr = 0;
 	this.state = "text";
 	this.nesting = 0;
-	this.tag = /<(\/?)\s*([^ >/]+)[^>/]*(\/?)>/g;
+	this.tag = /<(\/?)\s*([^ >/]+)[^>]*?(\/?)>/g;
 	this.utf = "";
 };
 
@@ -113,7 +113,7 @@ XmlStream.prototype.update = function(buf, offset, len) {
 	var begin = 0;
 	var last = 0;
 	
-	while ((m = this.tag.exec(this.remaining)) != null) {
+	while ((m = this.tag.exec(this.remaining)) != null) {	
 		last = this.tag.lastIndex;
 		
 		if(m[1] == '/') {

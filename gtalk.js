@@ -372,7 +372,7 @@ gtalk.prototype.message = function(to, body, cb) {
 		}
 	}
 	
-	self.presence(self.status.userset, self.status.status);
+	this.presence(this.status.userset, this.status.status);
 };
 
 gtalk.prototype.presence = function(show, status, cb, userset, force) {

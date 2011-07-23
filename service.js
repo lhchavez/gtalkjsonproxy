@@ -1,9 +1,9 @@
-var https = require('https');
-var querystring = require('querystring');
-var util = require('./util');
-var logging = require('./log');
-var fs = require('fs');
-var redis = require("redis"),
+var https = require('https'),
+    querystring = require('querystring'),
+    util = require('./util'),
+    logging = require('./log'),
+    fs = require('fs'),
+    redis = require("redis"),
     client = redis.createClient();
 
 logging.rootLogger.level = logging.DEBUG;
@@ -44,10 +44,16 @@ https.createServer(options, function (req, res) {
 						
 						delete tokens[gtalk.username + ':' + gtalk.auth];
 						delete mapping[gtalk.token];
-					}).on('message', function(data) {
+					});
+					
+					/*
+					gtalk.on('message', function(data) {
 						logger.trace("message: %s", data);
 					});
-					//.on('presence', function(data) { logger.debug("message: %s", data); });
+					gtalk.on('presence', function(data) {
+						logger.trace("message: %s", data);
+					});
+					*/
 
 					gtalk.login(function() {
 						logger.notice("[200] " + req.method + " to " + req.url);

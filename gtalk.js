@@ -1,12 +1,13 @@
 var logger = require('./log').log('gtalk'),
+    fs = require('fs'),
     util = require('./util'),
     timers = require('timers'),
     redis = require("redis"),
     client = redis.createClient();
 
 var awayTimeout = 15 * 60 * 1000; // 15 min
-var xaTimeout = 105 * 60 * 1000; // 2h
-var disconnectTimeout = 10 * 60 * 60 * 1000; // 12h
+var xaTimeout = 15 * 60 * 1000; // 30 min
+var disconnectTimeout = 90 * 60 * 1000; // 2h
 
 function gtalk(token, username, auth) {
 	logger.trace('instantiating with %s, %s %s', token, username, auth);
@@ -209,9 +210,12 @@ gtalk.prototype.login = function(cb) {
 				res.on('data', function(chunk) {
 					body += chunk;
 				}).on('end', function() {
-					logger.debug('mira los headers: %s', res.headers);
+					logger.trace('mira los headers: %s', res.headers);
 	
-					if(res.statusCode != 200) {
+					if(res.statusCode == 404) {
+						// we must log of now
+						self.logout(true);
+					} else if(res.statusCode != 200) {
 						logger.debug('error, disabling callback!');
 						self.callback = undefined;
 						
@@ -247,7 +251,7 @@ gtalk.prototype.login = function(cb) {
 
 			var toast  = '<?xml version="1.0" encoding="utf-8"?>\n<wp:Notification xmlns:wp="WPNotification"><wp:Toast>';
 			    toast += '<wp:Text1>' + xmlEscape(name) + '</wp:Text1><wp:Text2>' + xmlEscape(data.otr ? '(OTR)' : data.body) + '</wp:Text2>';
-			    toast += '<wp:Param>/Chat.xaml?from=' + encodeURIComponent(data.from) + '</wp:Param></wp:Toast></wp:Notification>';
+			    toast += '<wp:Param>/ChatPage.xaml?from=' + encodeURIComponent(data.from) + '</wp:Param></wp:Toast></wp:Notification>';
 			
 			var tile  = '<?xml version="1.0" encoding="utf-8"?>\n<wp:Notification xmlns:wp="WPNotification"><wp:Tile>';
 			    tile += '<wp:Count>' + this.unreadCount + '</wp:Count>';
@@ -272,9 +276,12 @@ gtalk.prototype.login = function(cb) {
 				res.on('data', function(chunk) {
 					body += chunk;
 				}).on('end', function() {
-					logger.debug('mira los headers: %s', res.headers);
+					logger.trace('mira los headers: %s', res.headers);
 	
-					if(res.statusCode != 200) {
+					if(res.statusCode == 404) {
+						// we must log of now
+						self.logout(true);
+					} else if(res.statusCode != 200) {
 						logger.debug('error, disabling callback!');
 						self.callback = undefined;
 					} else {
@@ -292,9 +299,12 @@ gtalk.prototype.login = function(cb) {
 				res.on('data', function(chunk) {
 					body += chunk;
 				}).on('end', function() {
-					logger.debug('mira los headers: %s', res.headers);
+					logger.trace('mira los headers: %s', res.headers);
 	
-					if(res.statusCode != 200) {
+					if(res.statusCode == 404) {
+						// we must log of now
+						self.logout(true);
+					} else if(res.statusCode != 200) {
 						logger.debug('error, disabling callback!');
 						self.callback = undefined;
 					} else {
@@ -310,6 +320,7 @@ gtalk.prototype.login = function(cb) {
 	};
 	this.on('message', pushNotification);
 	
+	/*
 	this.on('presence', function(data) {
 		if(!self.callback || !self.sendRaw) return;
 		
@@ -318,7 +329,7 @@ gtalk.prototype.login = function(cb) {
 			res.on('data', function(chunk) {
 				body += chunk;
 			}).on('end', function() {
-				logger.debug('mira los headers: %s', res.headers);
+				logger.trace('mira los headers: %s', res.headers);
 
 				if(res.statusCode != 200) {
 					logger.debug('error, disabling callback!');
@@ -340,12 +351,15 @@ gtalk.prototype.login = function(cb) {
 			self.persist();
 		}, {'X-NotificationClass': '13'});
 	});
+	*/
 };
 
 gtalk.prototype.stripMessage = function(m) {
 	var msg = {from: m['@'].from, time: new Date().getTime()};
 	
 	if(m['@'].type) msg.type = m['@'].type;
+	if(m['cha:composing']) msg.typing = true;
+	if(m['cha:paused']) msg.typing = false;
 	if(m.body) msg.body = m.body;
 	if(m['nos:x']) msg.otr = m['nos:x']['@'].value == 'enabled';
 	
@@ -356,11 +370,29 @@ gtalk.prototype.stripMessage = function(m) {
 
 gtalk.prototype.stripPresence = function(p) {
 	var pre = {jid: p['@'].from};
+	var self = this;
 	
 	if(p['@'].type) pre.type = p['@'].type;
 	if(p.show) pre.show = p.show;
 	if(p.status && typeof(p.status) == 'string') pre.status = p.status;
-	if(p.x && p.x.photo) pre.photo = p.x.photo;
+	if(p.x && p.x.photo && typeof p.x.photo == 'string') {
+		if(pre.photo != p.x.photo) {
+			fs.stat('images/' + p.x.photo, function(err, stat) {
+				if(err) {
+					logger.info("downloading photo: %s", p.x.photo);
+			
+					self.photo(pre.jid, function(type, data) {
+						fs.writeFile('images/' + p.x.photo, data, 'binary', function(err) {
+							if(err) {
+								logger.warn(err);
+							}
+						});
+					});
+				}
+			});
+		}
+		pre.photo = p.x.photo;
+	}
 	
 	if(!this.rosterList[pre.jid.split("/")[0]]) {
 		this.rosterList[pre.jid.split("/")[0]] = pre;
@@ -527,7 +559,8 @@ gtalk.prototype.photo = function(jid, cb) {
 	logger.trace("sending vcard request: %s", msg);
 	
 	this.iqCallbacks[id] = function(iq) {
-		if(iq['@'].type == 'error') {
+		if(iq['@'].type == 'error' || !iq.vCard.PHOTO) {
+			logger.warn("invalid vCard %s", iq.vCard);
 			cb('error');
 		} else {
 			cb(iq.vCard.PHOTO.TYPE, base64_decode(iq.vCard.PHOTO.BINVAL));
@@ -566,6 +599,8 @@ gtalk.prototype.messageQueue = function(cb) {
 
 gtalk.prototype.logout = function(service) {
 	var self = this;
+	
+	if(self.disconnected) return;
 	
 	this.send("</stream:stream>", function() {
 		self.sock.destroy();

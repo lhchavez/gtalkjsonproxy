@@ -39,11 +39,15 @@ https.createServer(options, function (req, res) {
 						logger.notice("[401] " + req.method + " to " + req.url);
 						res.writeHead(401, "Authentication Required", {'Content-Type': 'text/plain'});
 						res.end('401 - Authentication Required');
-					}).on('disconnect', function() {						
-						logger.notice('session ended ' + mapping[gtalk.token].username);
-						
-						delete tokens[gtalk.username + ':' + gtalk.auth];
-						delete mapping[gtalk.token];
+					}).on('disconnect', function() {
+						if (!mapping[gtalk.token]) {
+							logger.error('There was a race condition ending the session for %s', gtalk.username);
+						} else {
+							logger.notice('session ended for %s', gtalk.username);
+							
+							delete tokens[gtalk.username + ':' + gtalk.auth];
+							delete mapping[gtalk.token];
+						}
 					});
 					
 					/*
@@ -170,9 +174,25 @@ https.createServer(options, function (req, res) {
 
 			break;
 		default:
-			logger.notice("[404] " + req.method + " to " + req.url);
-			res.writeHead(404, "Not found", {'Content-Type': 'text/plain'});
-			res.end('404 - Not found');
+			if(/\/images\/[a-f0-9]{32}/.test(req.url)) {
+				logger.notice("[200] " + req.method + " to " + req.url);
+				fs.readFile(req.url.substring(1), function(err, data) {
+					if(err) {
+						fs.readFile('pixel.png', function(err, data) {
+							res.writeHead(200, "OK", {'Content-Type': 'image/png', 'Content-Length': '103'});
+							res.end(data);
+						});
+					} else {
+						res.writeHead(200, "OK", {'Content-Type': 'image/png', 'Content-Length': data.length});
+						res.end(data);
+					}
+				});
+			} else {
+				logger.notice("[404] " + req.method + " to " + req.url);
+				res.writeHead(404, "Not found", {'Content-Type': 'text/plain'});
+				res.end('404 - Not found');
+			}
+			
 			break;
 	}
 }).listen(443);
@@ -213,9 +233,9 @@ function handlePOST(res, req, params, cb) {
 				res.writeHead(400, "Bad Request", {'Content-Type': 'text/plain'});
 				res.end('400 - Bad Request');
 			} else if(params.indexOf('token') != -1 && !mapping[post.token]) {
-				logger.notice("[404] " + req.method + " to " + req.url);
-				res.writeHead(404, "Not found", {'Content-Type': 'text/plain'});
-				res.end('404 - Not found');
+				logger.notice("[403] " + req.method + " to " + req.url);
+				res.writeHead(403, "Forbidden", {'Content-Type': 'text/plain'});
+				res.end('403 - Forbidden');
 			} else {
 				cb(post);
 			}

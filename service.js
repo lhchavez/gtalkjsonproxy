@@ -17,6 +17,11 @@ var options = {
 	cert: fs.readFileSync('server.crt')
 };
 
+require('./gtalk').initClientCert(
+	fs.readFileSync('client.key'),
+	fs.readFileSync('client.crt')
+);
+
 util.crypto.init(fs.readFileSync('crypt.key'));
 
 https.createServer(options, function (req, res) {
@@ -33,7 +38,7 @@ https.createServer(options, function (req, res) {
 						return;
 					}
 
-					var gtalk = require('./gtalk')(util.randomString(96), post.username, post.auth);
+					var gtalk = require('./gtalk').gtalk(util.randomString(96), post.username, post.auth);
 
 					gtalk.on('auth_failure', function(details) {
 						logger.notice("[401] " + req.method + " to " + req.url);
@@ -260,7 +265,7 @@ client.smembers('clients', function(err, clients) {
 				
 				logger.trace("unserialized data: %s", deciphered);
 				
-				var gtalk = require('./gtalk')(JSON.parse(deciphered));
+				var gtalk = require('./gtalk').gtalk(JSON.parse(deciphered));
 
 				gtalk.on('auth_failure', function(details) {
 					logger.notice('unable to restore session for ' + gtalk.username);

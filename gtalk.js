@@ -13,6 +13,7 @@ var clientCert = undefined;
 var clientKey = undefined;
 
 function gtalk(token, username, auth) {
+	
 	logger.trace('instantiating with %s, %s %s', token, username, auth);
 	
 	if(typeof(token) == 'object') {
@@ -23,14 +24,27 @@ function gtalk(token, username, auth) {
 		this.callback = token.callback;
 		this.status = token.status;
 		this.unreadFor = token.unreadFor || {};
+		this.key = token.key;
+		this.sendToasts = token.sendToasts;
+		this.sendTiles = token.sendTiles;
 	} else {
+		var address = username.toLowerCase().split('@'),
+			user = address[0],
+			domain = address[1] || 'gmail.com';
+		
+		if(domain == 'gmail.com') user = user.replace(/\./g, '');
+		
+		this.key = user + '@' + domain;
+		this.username = username;
+		if(this.username.indexOf('@') == -1) this.username += '@gmail.com';
 		this.clientId = 'client:' + util.randomString(128);
 		this.token = token;
-		this.username = username;
 		this.auth = auth;
 		this.callback = undefined;
 		this.status = {};
 		this.unreadFor = {};
+		this.sendToasts = true;
+		this.sendTiles = true;
 	}
 	
 	this.server = this.username.split('@')[1];
@@ -44,20 +58,21 @@ function gtalk(token, username, auth) {
 	this.iqCallbacks = {};
 	this.iqCounter = 1;
 	this.unreadCount = 0;
+	this.lastId = '';
 	
 	var self = this;
 	
-	client.get('key:' + this.username, function(err, data) {
+	client.get('key:' + this.key, function(err, data) {
 		if(data) {
 			self.userKey = util.crypto.decipher(data);
 		} else {
 			self.userKey = util.randomString(66);
 			
-			client.set('key:' + self.username, util.crypto.cipher(self.userKey));
+			client.set('key:' + self.key, util.crypto.cipher(self.userKey));
 		}
 	});
 	
-	client.llen('messages:' + this.username, function(err, data) {
+	client.llen('messages:' + this.key, function(err, data) {
 		self.unreadCount += data;
 	});
 	
@@ -203,6 +218,11 @@ gtalk.prototype.login = function(cb) {
 	});
 
 	var pushNotification = function(data) {
+		if(this.lastId == data.id) {
+			return;
+		}
+		this.lastId = data.id;
+		
 		var email = data.from.split('/')[0];
 		
 		if(self.rosterList[email]) {
@@ -210,7 +230,7 @@ gtalk.prototype.login = function(cb) {
 		}
 		
 		if(!self.callback) {
-			client.rpush('messages:' + self.username, util.crypto.cipher(JSON.stringify(data), self.userKey, 24));
+			client.rpush('messages:' + self.key, util.crypto.cipher(JSON.stringify(data), self.userKey, 24));
 			if(!self.unreadFor[email]) {
 				self.unreadFor[email] = 1;
 			} else {
@@ -227,7 +247,7 @@ gtalk.prototype.login = function(cb) {
 					body += chunk;
 				}).on('end', function() {
 					if(res.statusCode == 404) {
-						// we must log of now
+						// we must log off now
 						self.logout(true);
 					} else if(res.statusCode != 200) {
 						logger.debug('error, disabling callback! HTTP %s', res.statusCode);
@@ -237,10 +257,18 @@ gtalk.prototype.login = function(cb) {
 						
 						self.persist();
 					} else if(res.headers['x-notificationstatus'] == 'Suppressed') {
-						// switch to toast NOW
-						logger.debug('notification suppressed, sending toast instead');
-						self.sendRaw = false;
-						pushNotification(data);
+						if(self.sendToasts || self.sendTiles) {
+							// switch to toast NOW
+							logger.debug('notification suppressed, sending toast instead');
+							self.sendRaw = false;
+							pushNotification(data);
+						} else {
+							logger.debug('notification suppressed, disabling callback');
+							
+							self.callback = undefined();
+							
+							self.persist();
+						}
 					} else {
 						logger.trace('another message sent: %s',  body);
 					}
@@ -255,7 +283,7 @@ gtalk.prototype.login = function(cb) {
 		} else if(data.body) {
 			var name = data.from.split('/')[0];
 			
-			client.rpush('messages:' + self.username, util.crypto.cipher(JSON.stringify(data), self.userKey, 24));
+			client.rpush('messages:' + self.key, util.crypto.cipher(JSON.stringify(data), self.userKey, 24));
 			
 			if(!self.unreadFor[email]) {
 				self.unreadFor[email] = 1;
@@ -305,6 +333,9 @@ gtalk.prototype.login = function(cb) {
 			];
 
 			for(var i = 0; i < 3; i++) {
+				if(notifications[i][1]['X-WindowsPhone-Target'] == 'toast' && !self.sendToasts) continue;
+				if(notifications[i][1]['X-WindowsPhone-Target'] == 'token' && !self.sendTiles) continue;
+				
 				self.post(self.callback, notifications[i][0], function(res) {
 					var body = "";
 					res.on('data', function(chunk) {
@@ -318,6 +349,8 @@ gtalk.prototype.login = function(cb) {
 							logger.trace('mira los headers: %s', res.headers);
 							logger.trace('y el body: %s', body);
 							self.callback = undefined;
+							
+							self.persist();
 						} else {
 							logger.trace('another message sent: %s',  body);
 						}
@@ -326,6 +359,8 @@ gtalk.prototype.login = function(cb) {
 					logger.debug('error, disabling callback');
 					logger.debug(e);
 					self.callback = undefined;
+					
+					self.persist();
 				}, notifications[i][1]);
 			}
 		}
@@ -369,6 +404,7 @@ gtalk.prototype.login = function(cb) {
 gtalk.prototype.stripMessage = function(m) {
 	var msg = {from: m['@'].from, time: new Date().getTime()};
 	
+	if(m['@'].id) msg.id = m['@'].id;
 	if(m['@'].type) msg.type = m['@'].type;
 	if(m['cha:composing']) msg.typing = true;
 	if(m['cha:paused']) msg.typing = false;
@@ -433,7 +469,12 @@ gtalk.prototype.stripRoster = function(r) {
 
 gtalk.prototype.send = function(data, cb) {
 	if(!this.disconnected) {
-		this.sock.write(data, cb);
+		try {
+			this.sock.write(data, cb);
+		} catch (err) {
+			logger.critical("error writing stream. disconnecting ASAP: %s", err);
+			this.logout(true);
+		}
 	}
 };
 
@@ -587,6 +628,28 @@ gtalk.prototype.photo = function(jid, cb) {
 	this.send(msg);
 };
 
+gtalk.prototype.otr = function(jid, enabled) {
+	var email = jid.split("/")[0];
+	
+	if(!this.rosterList[email]) return;
+	this.rosterList[email].otr = enabled;
+	
+	var id = "otr_" + this.iqCounter++;
+	
+	var msg = "<iq type='set' from='" + xmlEscape(this.jid) + "' to='" + xmlEscape(this.username) + "' id='" + id + "'><query xmlns='google:nosave'><item xmlns='google:nosave' jid='" + xmlEscape(email) + "' value='" + (enabled ? "enabled" : "disabled") + "'/></query></iq>";
+	
+	logger.trace("sending otr request: %s", msg);
+	
+	this.send(msg);
+};
+
+gtalk.prototype.notifications = function(jid, toast, tile) {
+	this.sendToasts = toast;
+	this.sendTiles = tile;
+	
+	this.persist();
+};
+
 gtalk.prototype.register = function(url) {
 	this.callback = url;
 	this.sendRaw = true;
@@ -598,7 +661,7 @@ gtalk.prototype.register = function(url) {
 gtalk.prototype.messageQueue = function(cb) {
 	var self = this;
 	
-	client.lrange('messages:' + self.username, 0, -1, function(err, messages) {
+	client.lrange('messages:' + self.key, 0, -1, function(err, messages) {
 		if(messages == null) return;
 		
 		messages.forEach(function(msg) {
@@ -609,7 +672,7 @@ gtalk.prototype.messageQueue = function(cb) {
 		logger.trace("end of stream");
 		cb(null);
 		
-		client.ltrim('messages:' + self.username, messages.length + 1, -1);
+		client.ltrim('messages:' + self.key, messages.length + 1, -1);
 		self.unreadCount = 0;
 		self.unreadFor = {};
 	});
@@ -619,12 +682,11 @@ gtalk.prototype.logout = function(service) {
 	var self = this;
 	
 	if(self.disconnected) return;
-	
+	this.disconnected = true;
+
 	this.send("</stream:stream>", function() {
 		self.sock.destroy();
 	});
-	
-	this.disconnected = true;
 	
 	client.srem('clients', self.clientId);
 	client.del(self.clientId);
@@ -636,23 +698,26 @@ gtalk.prototype.logout = function(service) {
 
 gtalk.prototype.persist = function() {
 	client.set(this.clientId, util.crypto.cipher(JSON.stringify({
+		key: this.key,
 		clientId: this.clientId,
 		token: this.token,
 		username: this.username,
 		auth: this.auth,
 		callback: this.callback,
 		status: this.status,
-		unreadFor: this.unreadFor
+		unreadFor: this.unreadFor,
+		sendTiles: this.sendTiles,
+		sendToasts: this.sendToasts
 	})));
 };
 
 function xmlEscape(str) {
-	return str.replace('&', '&amp;')
-		.replace("'", '&apos;')
-		.replace('"', '&quot;')
-		.replace('<', '&lt;')
-		.replace('>', '&gt;');
-} 
+	return str.replace(/&/g, '&amp;')
+		.replace(/'/g, '&apos;')
+		.replace(/"/g, '&quot;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;');
+}
 
 module.exports.gtalk = function(token, username, auth) {
 	return new gtalk(token, username, auth);

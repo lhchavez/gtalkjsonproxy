@@ -10,6 +10,7 @@ logging.rootLogger.level = logging.DEBUG;
 
 var logger = logging.log('service');
  
+var pushMapping = {};
 var mapping = {};
 var tokens = {};
 var options = {
@@ -174,7 +175,31 @@ https.createServer(options, function (req, res) {
 					res.writeHead(200, "OK", {'Content-Type': 'text/plain'});
 					res.end();
 					mapping[post.token].register(post.url);
+					
+					if(mapping[pushMapping[post.url]] && pushMapping[post.url] != post.token) {
+						mapping[pushMapping[post.url]].logout(true);
+					}
+					pushMapping[post.url] = post.token;
 				}
+			});
+
+			break;
+		case '/otr':
+			handlePOST(res, req, ['token', 'jid'], function(post) {
+				logger.notice("[200] " + req.method + " to " + req.url);
+				res.writeHead(200, "OK", {'Content-Type': 'text/plain'});
+				res.end();
+				mapping[post.token].otr(post.jid, post.enabled == 'True');
+			});
+
+			break;
+		case '/notifications':
+			handlePOST(res, req, ['token'], function(post) {
+				logger.notice("[200] " + req.method + " to " + req.url);
+				res.writeHead(200, "OK", {'Content-Type': 'text/plain'});
+				res.end();
+				
+				mapping[post.token].notifications(post.jid, post.toast == 'True', post.tile == 'True');
 			});
 
 			break;
@@ -282,6 +307,13 @@ client.smembers('clients', function(err, clients) {
 
 					mapping[gtalk.token] = gtalk;
 					tokens[gtalk.username + ":" + gtalk.auth] = gtalk.token;
+					
+					if(gtalk.callback) {
+						if(mapping[pushMapping[gtalk.callback]]) {
+							mapping[pushMapping[gtalk.callback]].logout(true);
+						}
+						pushMapping[gtalk.callback] = gtalk.token;
+					}
 				});
 			} else {
 				client.srem('clients', c);

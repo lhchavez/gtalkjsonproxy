@@ -12,8 +12,9 @@ var disconnectTimeout = 90 * 60 * 1000; // 2h
 var clientCert = undefined;
 var clientKey = undefined;
 
+var lastId = {};
+
 function gtalk(token, username, auth) {
-	
 	logger.trace('instantiating with %s, %s %s', token, username, auth);
 	
 	if(typeof(token) == 'object') {
@@ -27,6 +28,7 @@ function gtalk(token, username, auth) {
 		this.key = token.key;
 		this.sendToasts = token.sendToasts;
 		this.sendTiles = token.sendTiles;
+		this.sendSecondaryTiles = token.sendSecondaryTiles;
 	} else {
 		var address = username.toLowerCase().split('@'),
 			user = address[0],
@@ -45,6 +47,7 @@ function gtalk(token, username, auth) {
 		this.unreadFor = {};
 		this.sendToasts = true;
 		this.sendTiles = true;
+		this.sendSecondaryTiles = true;
 	}
 	
 	this.server = this.username.split('@')[1];
@@ -58,7 +61,6 @@ function gtalk(token, username, auth) {
 	this.iqCallbacks = {};
 	this.iqCounter = 1;
 	this.unreadCount = 0;
-	this.lastId = '';
 	
 	var self = this;
 	
@@ -207,7 +209,7 @@ gtalk.prototype.login = function(cb) {
 							});
 							
 							ss.removeAllListeners('data');
-							ss.addListener('data', function(x) { logger.trace("adding to the xml stream: %s", x.toString('utf8')); xmlStream.update(x); });
+							ss.addListener('data', function(x) { logger.trace("adding to the xml stream: %s", function() { x.toString('utf8') }); xmlStream.update(x); });
 							
 							self.presence(self.status.show, self.status.status, function() {}, false, true);
 						}
@@ -218,12 +220,12 @@ gtalk.prototype.login = function(cb) {
 	});
 
 	var pushNotification = function(data) {
-		if(this.lastId == data.id) {
+		var email = data.from.split('/')[0];
+		
+		if(self.disconnected || lastId[self.key] == data.id) {
 			return;
 		}
-		this.lastId = data.id;
-		
-		var email = data.from.split('/')[0];
+		lastId[self.key] = data.id;
 		
 		if(self.rosterList[email]) {
 			self.rosterList[email].jid = data.from;
@@ -257,15 +259,17 @@ gtalk.prototype.login = function(cb) {
 						
 						self.persist();
 					} else if(res.headers['x-notificationstatus'] == 'Suppressed') {
-						if(self.sendToasts || self.sendTiles) {
+						if(self.sendToasts || self.sendTiles || self.sendSecondaryTiles) {
 							// switch to toast NOW
 							logger.debug('notification suppressed, sending toast instead');
 							self.sendRaw = false;
+							
+							lastId[self.key] = undefined;
 							pushNotification(data);
 						} else {
 							logger.debug('notification suppressed, disabling callback');
 							
-							self.callback = undefined();
+							self.callback = undefined;
 							
 							self.persist();
 						}
@@ -326,16 +330,13 @@ gtalk.prototype.login = function(cb) {
 				tileNotificationClass = '21';
 			}
 			
-			var notifications = [
-				[toast, {'X-NotificationClass': toastNotificationClass, 'X-WindowsPhone-Target': 'toast', 'Content-Type': 'text/xml'}],
-				[tile, {'X-NotificationClass': tileNotificationClass, 'X-WindowsPhone-Target': 'token', 'Content-Type': 'text/xml'}],
-				[userTile, {'X-NotificationClass': tileNotificationClass, 'X-WindowsPhone-Target': 'token', 'Content-Type': 'text/xml'}]
-			];
+			var notifications = [];
+			
+			if(self.sendToasts) notifications.push([toast, {'X-NotificationClass': toastNotificationClass, 'X-WindowsPhone-Target': 'toast', 'Content-Type': 'text/xml'}]);
+			if(self.sendTiles) notifications.push([tile, {'X-NotificationClass': tileNotificationClass, 'X-WindowsPhone-Target': 'token', 'Content-Type': 'text/xml'}]);
+			if(self.sendSecondaryTiles) notifications.push([userTile, {'X-NotificationClass': tileNotificationClass, 'X-WindowsPhone-Target': 'token', 'Content-Type': 'text/xml'}]);
 
-			for(var i = 0; i < 3; i++) {
-				if(notifications[i][1]['X-WindowsPhone-Target'] == 'toast' && !self.sendToasts) continue;
-				if(notifications[i][1]['X-WindowsPhone-Target'] == 'token' && !self.sendTiles) continue;
-				
+			for(var i = 0; i < notifications.length; i++) {
 				self.post(self.callback, notifications[i][0], function(res) {
 					var body = "";
 					res.on('data', function(chunk) {
@@ -366,39 +367,6 @@ gtalk.prototype.login = function(cb) {
 		}
 	};
 	this.on('message', pushNotification);
-	
-	/*
-	this.on('presence', function(data) {
-		if(!self.callback || !self.sendRaw) return;
-		
-		self.post(self.callback, "pre:" + util.crypto.cipher(JSON.stringify(data), self.userKey, 24), function(res) {
-			var body = "";
-			res.on('data', function(chunk) {
-				body += chunk;
-			}).on('end', function() {
-				logger.trace('mira los headers: %s', res.headers);
-
-				if(res.statusCode != 200) {
-					logger.debug('error, disabling callback!');
-					self.callback = undefined;
-					
-					self.persist();
-				} else if(res.headers['x-notificationstatus'] == 'Suppressed') {
-					// switch to toast NOW
-					self.sendRaw = false;
-				} else {
-					logger.trace('another message sent: %s',  body);
-				}
-			});
-		}, function(e) {
-			logger.debug('error, disabling callback');
-			logger.debug(e);
-			self.callback = undefined;
-			
-			self.persist();
-		}, {'X-NotificationClass': '13'});
-	});
-	*/
 };
 
 gtalk.prototype.stripMessage = function(m) {
@@ -643,9 +611,10 @@ gtalk.prototype.otr = function(jid, enabled) {
 	this.send(msg);
 };
 
-gtalk.prototype.notifications = function(jid, toast, tile) {
+gtalk.prototype.notifications = function(jid, toast, tile, secondarytile) {
 	this.sendToasts = toast;
 	this.sendTiles = tile;
+	this.sendSecondaryTiles = tile;
 	
 	this.persist();
 };
@@ -682,9 +651,10 @@ gtalk.prototype.logout = function(service) {
 	var self = this;
 	
 	if(self.disconnected) return;
-	this.disconnected = true;
+	self.disconnected = true;
 
-	this.send("</stream:stream>", function() {
+	self.sock.removeAllListeners();
+	self.sock.end("</stream:stream>", function() {
 		self.sock.destroy();
 	});
 	
@@ -692,11 +662,13 @@ gtalk.prototype.logout = function(service) {
 	client.del(self.clientId);
 	
 	if(service) {
-		this.emit('disconnect');
+		self.emit('disconnect');
 	}
 };
 
 gtalk.prototype.persist = function() {
+	if(this.disconnected) return;
+	
 	client.set(this.clientId, util.crypto.cipher(JSON.stringify({
 		key: this.key,
 		clientId: this.clientId,
@@ -706,8 +678,9 @@ gtalk.prototype.persist = function() {
 		callback: this.callback,
 		status: this.status,
 		unreadFor: this.unreadFor,
+		sendToasts: this.sendToasts,
 		sendTiles: this.sendTiles,
-		sendToasts: this.sendToasts
+		sendSecondaryTiles: this.sendSecondaryTiles
 	})));
 };
 

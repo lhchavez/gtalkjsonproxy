@@ -199,7 +199,7 @@ https.createServer(options, function (req, res) {
 				res.writeHead(200, "OK", {'Content-Type': 'text/plain'});
 				res.end();
 				
-				mapping[post.token].notifications(post.jid, post.toast == 'True', post.tile == 'True');
+				mapping[post.token].notifications(post.jid, post.toast == 'True', post.tile == 'True', post.secondarytile == 'True');
 			});
 
 			break;
@@ -295,7 +295,8 @@ client.smembers('clients', function(err, clients) {
 				gtalk.on('auth_failure', function(details) {
 					logger.notice('unable to restore session for ' + gtalk.username);
 					client.srem('clients', c);
-				}).on('disconnect', function() {						
+					client.del(c);
+				}).on('disconnect', function() {
 					logger.notice('session ended ' + mapping[gtalk.token].username);
 					
 					delete tokens[gtalk.username + ':' + gtalk.auth];
@@ -306,7 +307,7 @@ client.smembers('clients', function(err, clients) {
 					logger.notice('session started ' + gtalk.username);
 
 					mapping[gtalk.token] = gtalk;
-					tokens[gtalk.username + ":" + gtalk.auth] = gtalk.token;
+					tokens[gtalk.username + ":" + gtalk.auth] = gtalk.token
 					
 					if(gtalk.callback) {
 						if(mapping[pushMapping[gtalk.callback]]) {
@@ -317,6 +318,7 @@ client.smembers('clients', function(err, clients) {
 				});
 			} else {
 				client.srem('clients', c);
+				client.del(c);
 			}
 		});
 	});

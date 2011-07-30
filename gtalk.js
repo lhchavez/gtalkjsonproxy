@@ -24,7 +24,7 @@ function gtalk(token, username, auth) {
 		this.auth = token.auth;
 		this.callback = token.callback;
 		this.status = token.status;
-		this.unreadFor = token.unreadFor || {};
+		this.unreadFor = token.unreadFor;
 		this.key = token.key;
 		this.sendToasts = token.sendToasts;
 		this.sendTiles = token.sendTiles;
@@ -43,7 +43,7 @@ function gtalk(token, username, auth) {
 		this.token = token;
 		this.auth = auth;
 		this.callback = undefined;
-		this.status = {};
+		this.status = {status: "", show: ""};
 		this.unreadFor = {};
 		this.sendToasts = true;
 		this.sendTiles = true;
@@ -122,97 +122,131 @@ gtalk.prototype.login = function(cb) {
 					logger.trace("raw, unbuffered data: %s", str);
 				
 					if(str.indexOf('stream:features') != -1) {
-						if(self.logged_in) {
-							ss.write("<iq type='set' id='bind_resource'><bind xmlns='urn:ietf:params:xml:ns:xmpp-bind'><resource>wpmango</resource></bind></iq>");
-						} else {
-							var token = base64_encode(new Buffer('\u0000' + self.username + '\u0000' + self.auth));
-					
-							ss.write("<auth xmlns='urn:ietf:params:xml:ns:xmpp-sasl' mechanism='X-GOOGLE-TOKEN'>" + token + "</auth>");
-						}
-					} else if(str.indexOf('success') != -1) {
-						self.logged_in = true;
-						
-						ss.write("<stream:stream to='" + self.server + "' xmlns='jabber:client' xmlns:stream='http://etherx.jabber.org/streams' version='1.0'>");
-						
-						client.sadd('clients', self.clientId);
-						self.persist();
+						var token = base64_encode(new Buffer('\u0000' + self.username + '\u0000' + self.auth));
+						ss.write("<auth xmlns='urn:ietf:params:xml:ns:xmpp-sasl' mechanism='X-GOOGLE-TOKEN'>" + token + "</auth>");
 					} else if(str.indexOf('failure') != -1) {
 						self.emit('auth_failure', str);
 						logger.debug('auth_failure: %s', str);
 						self.logout();
-					} else if(str.indexOf('iq') != -1) {
-						if(str.indexOf('bind_resource') != -1) {
-							self.jid = str.match(/<jid>([^>]*)<\/jid>/)[1];
-							
-							ss.write("<iq to='" + self.server + "' type='set' id='session'><session xmlns='urn:ietf:params:xml:ns:xmpp-session'/></iq>");
-						} else if(str.indexOf('session') != -1) {
-							ss.write("<iq from='" + self.jid + "' type='get' id='roster'><query xmlns='jabber:iq:roster'/></iq>");
-							expecting_roster = true;
-						} else if(expecting_roster) {
-							roster_text += str;
-							
-							if(str.indexOf('</iq>') == -1) {
-								return;
-							}
-							
-							var roster_parser = new xml2js.Parser();
-							
-							roster_parser.addListener('end', function(result) {
-								if(result.query.item.length) {
-									for(i = 0; i < result.query.item.length; i++) {
-										var ros = self.stripRoster(result.query.item[i]);
+					} else if(str.indexOf('success') != -1) {
+						self.logged_in = true;
+						
+						client.sadd('clients', self.clientId);
+						self.persist();
+						
+						var xmlStream = new util.XmlStream();
+						
+						var loginSteps = [
+							{
+								id: 'bind_resource',
+								send: function() {
+									ss.write("<iq type='set' id='bind_resource'><bind xmlns='urn:ietf:params:xml:ns:xmpp-bind'><resource>gchat.</resource></bind></iq>");
+								},
+								receive: function(result) {
+									self.jid = result.bind.jid;
+								}
+							}, {
+								id: 'session',
+								send: function() {
+									ss.write("<iq to='" + self.server + "' type='set' id='session'><session xmlns='urn:ietf:params:xml:ns:xmpp-session'/></iq>");
+								}
+							}, {
+								id: 'roster',
+								send: function() {
+									ss.write("<iq from='" + self.jid + "' type='get' id='roster'><query xmlns='jabber:iq:roster'/></iq>");
+								},
+								receive: function(result) {								
+									if(result.query.item.length) {
+										for(i = 0; i < result.query.item.length; i++) {
+											var ros = self.stripRoster(result.query.item[i]);
+											self.rosterList[ros.jid] = ros;
+										}
+									} else {
+										var ros = self.stripRoster(result.query.item);
 										self.rosterList[ros.jid] = ros;
 									}
-								} else {
-									var ros = self.stripRoster(result.query.item);
-									self.rosterList[ros.jid] = ros;
-								}
-							
-								if(cb) cb();
-							});
-							
-							roster_parser.parseString(roster_text);
-							
-							var xmlStream = new util.XmlStream();
-							xmlStream.on('data', function(d) {
-								var parser = new xml2js.Parser();
 								
-								logger.trace("complete XML object: %s", d);
-							
-								parser.addListener('end', function(result) {
-									if(result.presence) {
-										if(result.presence.length) {
-											for(i = 0; i < result.presence.length; i++) {
-												self.emit('presence', self.stripPresence(result.presence[i]));
+									if(cb) cb();
+								}
+							}, {
+								id: 'shared-status',
+								send: function() {
+									ss.write("<iq type='get' to='" + self.username + "' id='shared-status' ><query xmlns='google:shared-status' version='2'/></iq>");
+								}
+							}, {
+								send: function() {
+									self.presence(self.status.show, self.status.status, function() {}, false, true);
+								}
+							}
+						];
+						
+						xmlStream.addListener('data', function(result) {
+							if(result['stream:stream']) {
+								// do the login dance
+								var loginDance = function(idx) {
+									logger.trace('login dance step %s: %s', idx, loginSteps[idx]);
+									
+									if(loginSteps[idx].id) {
+										self.iqCallbacks[loginSteps[idx].id] = function(result) {
+											if(loginSteps[idx].receive) {
+												loginSteps[idx].receive(result);
 											}
-										} else {
-											self.emit('presence', self.stripPresence(result.presence));
-										}
-									} else if(result.message) {
-										if(result.message.length) {
-											for(i = 0; i < result.message.length; i++) {
-											self.emit('message', self.stripMessage(result.message[i]));
-											}
-										} else {
-											self.emit('message', self.stripMessage(result.message));
-										}
-									} else if(result.iq) {
-										if(self.iqCallbacks[result.iq['@'].id]) {
-											self.iqCallbacks[result.iq['@'].id](result.iq);
-										
-											delete self.iqCallbacks[result.iq['@'].id];
-										}
+											loginDance(idx+1);
+										};
 									}
-								});
-							
-								parser.parseString("<x>" + d + "</x>");
-							});
-							
-							ss.removeAllListeners('data');
-							ss.addListener('data', function(x) { logger.trace("adding to the xml stream: %s", function() { x.toString('utf8') }); xmlStream.update(x); });
-							
-							self.presence(self.status.show, self.status.status, function() {}, false, true);
-						}
+									loginSteps[idx].send();
+								};
+								loginDance(0);
+							} else if(result.presence) {
+								if(result.presence.length) {
+									for(i = 0; i < result.presence.length; i++) {
+										self.emit('presence', self.stripPresence(result.presence[i]));
+									}
+								} else {
+									self.emit('presence', self.stripPresence(result.presence));
+								}
+							} else if(result.message) {
+								if(result.message.length) {
+									for(i = 0; i < result.message.length; i++) {
+									self.emit('message', self.stripMessage(result.message[i]));
+									}
+								} else {
+									self.emit('message', self.stripMessage(result.message));
+								}
+							} else if(result.iq) {
+								if(result.iq.query && result.iq.query['@'] && result.iq.query['@'].xmlns === 'google:shared-status' ) {
+									logger.trace("shared status: %s", result);
+									logger.trace("shared status xml: %s", util.xmlify('iq', result.iq));
+									
+									self.status.show = result.iq.query.show;
+									self.status.status = result.iq.query.status;
+									
+									if(typeof(self.status.status) == 'object') {
+										self.status.status = '';
+									}
+									
+									if(self.status.show == 'default') {
+										self.status.show = 'available';
+									}
+									
+									self.status.userset = self.status.show;
+								}
+								
+								if(self.iqCallbacks[result.iq['@'].id]) {
+									self.iqCallbacks[result.iq['@'].id](result.iq);
+								
+									delete self.iqCallbacks[result.iq['@'].id];
+								}
+							}
+						});
+						
+						ss.removeAllListeners();
+						ss.addListener('data', function(x) {
+							logger.trace("adding to the xml stream: %s", x.toString('utf8') );
+							xmlStream.update(x);
+						});
+						
+						ss.write("<stream:stream to='" + self.server + "' xmlns='jabber:client' xmlns:stream='http://etherx.jabber.org/streams' version='1.0'>");
 					}
 				});
 			});
@@ -623,6 +657,9 @@ gtalk.prototype.register = function(url) {
 	this.callback = url;
 	this.sendRaw = true;
 	this.persist();
+	
+	// Bug-on-demand(TM)
+	//'this is a'.bug();
 	
 	this.presence(this.status.userset, this.status.status);
 };

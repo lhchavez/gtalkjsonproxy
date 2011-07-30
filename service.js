@@ -307,7 +307,7 @@ client.smembers('clients', function(err, clients) {
 					logger.notice('session started ' + gtalk.username);
 
 					mapping[gtalk.token] = gtalk;
-					tokens[gtalk.username + ":" + gtalk.auth] = gtalk.token
+					tokens[gtalk.username + ":" + gtalk.auth] = gtalk.token;
 					
 					if(gtalk.callback) {
 						if(mapping[pushMapping[gtalk.callback]]) {

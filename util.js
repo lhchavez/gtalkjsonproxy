@@ -1,4 +1,5 @@
-var base64 = require('base64');
+var base64 = require('base64'),
+    xml2js = require('xml2js');
 
 module.exports.crypto = {
 	key: undefined,
@@ -112,18 +113,29 @@ XmlStream.prototype.update = function(buf, offset, len) {
 	var m;
 	var begin = 0;
 	var last = 0;
+	var self = this;
 	
 	while ((m = this.tag.exec(this.remaining)) != null) {	
 		last = this.tag.lastIndex;
 		
-		if(m[1] == '/') {
+		if(m[2] == 'stream:stream') {
+			self.emit('data', {'stream:stream': {}});
+			begin = last;
+			continue;
+		} if(m[1] == '/') {
 			this.nesting--;
 		} else if(m[3] != '/') {
 			this.nesting++;
 		}
 		
 		if(this.nesting == 0) {
-			this.emit('data', this.good + this.remaining.substring(begin, last));
+			var parser = new xml2js.Parser();
+						
+			parser.addListener('end', function(result) {
+				self.emit('data', result);
+			});
+			
+			parser.parseString('<x>' + this.good + this.remaining.substring(begin, last) + '</x>');
 			begin = last;
 			this.good = '';
 		}
@@ -132,3 +144,51 @@ XmlStream.prototype.update = function(buf, offset, len) {
 	this.good += this.remaining.substring(begin, last);
 	this.remaining = this.remaining.substring(last);
 };
+
+module.exports.json
+
+module.exports.xmlify = function(tag, json) {
+	if(typeof(json) == 'object' && json.length) {
+		var xml = "";
+		for(var i = 0; i < json.length; i++) {
+			xml += module.exports.xmlify(tag, json[i]);
+		}
+		return xml;
+	} else if(typeof(json) == 'string') {
+		return "<" + tag + ">" + module.exports.xmlEscape(json) + "</" + tag + ">";
+	}
+	
+	var xml = "<" + tag;
+	
+	if(json['@']) {
+		for(var key in json['@']) {
+			if(!json['@'].hasOwnProperty(key)) continue;
+			
+			xml += " " + key + "='" + module.exports.xmlEscape(json['@'][key]) + "'";
+		}
+	}
+	
+	var children = "";
+	
+	for(var key in json) {
+		if(key == '@' || !json.hasOwnProperty(key)) continue;
+		
+		children += module.exports.xmlify(key, json[key]);
+	}
+	
+	if(children.length == 0) {
+		xml += '/>';
+	} else {
+		xml += '>' + children + '</' + tag + '>';
+	}
+	
+	return xml;
+};
+
+module.exports.xmlEscape = function(str) {
+	return str.replace(/&/g, '&amp;')
+		.replace(/'/g, '&apos;')
+		.replace(/"/g, '&quot;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;');
+}

@@ -105,7 +105,7 @@ Log.prototype.log = function(level, args) {
 					}
 				});
 			} else {
-				msg = JSON.stringify(args[0]);
+				msg = JSON.stringify(fmt);
 			}
 				
 			for(; i < args.length; i++) {

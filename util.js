@@ -1,5 +1,6 @@
 var base64 = require('base64'),
-    xml2js = require('xml2js');
+    xml2js = require('xml2js'),
+	gzip = require('gzip');
 
 module.exports.crypto = {
 	key: undefined,
@@ -13,14 +14,21 @@ module.exports.crypto = {
 		}
 	},
 	
-	cipher: function(data, key, saltSize) {
+	cipher: function(data, key, saltSize, compressCb) {
 		if (saltSize === undefined) saltSize = 32 * 6;
 		
 		var salt = module.exports.randomString(saltSize),
-		    cipher = this.crypto.createCipher('aes-256-cbc', salt + '$' + ((typeof key === 'string') ? key : this.key)),
-		    buf = new Buffer(data, 'utf8');
+		    cipher = this.crypto.createCipher('aes-256-cbc', salt + '$' + ((typeof key === 'string') ? key : this.key));
 		
-		return buf.length + ":" + salt + ":" + base64.encode(new Buffer(cipher.update(buf, 'binary', 'binary') + cipher.final('binary'), 'binary'));
+		if(compressCb) {
+			gzip(data, function(err, buf) {
+				compressCb(buf.length + ":" + salt + ":" + base64.encode(new Buffer(cipher.update(buf, 'binary', 'binary') + cipher.final('binary'), 'binary')));
+			});
+		} else {
+			var buf = new Buffer(data, 'utf8');
+			
+			return buf.length + ":" + salt + ":" + base64.encode(new Buffer(cipher.update(buf, 'binary', 'binary') + cipher.final('binary'), 'binary'));
+		}
 	},
 	
 	decipher: function(data, key) {
@@ -154,6 +162,10 @@ module.exports.xmlify = function(tag, json) {
 			xml += module.exports.xmlify(tag, json[i]);
 		}
 		return xml;
+	} else if(tag == '#') {
+		return module.exports.xmlEscape(json);
+	} else if(!json) {
+		return '';
 	} else if(typeof(json) == 'string') {
 		return "<" + tag + ">" + module.exports.xmlEscape(json) + "</" + tag + ">";
 	}

@@ -29,53 +29,60 @@ https.createServer(options, function (req, res) {
 	switch(req.url) {
 		case '/login':
 			handlePOST(res, req, ['username', 'auth'], function(post) {
-					if(tokens[post.username + ":" + post.auth]) {
+				if(tokens[post.username + ":" + post.auth]) {
+					var token = tokens[post.username + ":" + post.auth];
+					
+					if(mapping[token]) {
 						logger.notice("[200] " + req.method + " to " + req.url);
 						res.writeHead(200, "OK", {'Content-Type': 'text/plain'});
 
-						var token = tokens[post.username + ":" + post.auth];
-						res.end(token);
+						res.end(token + "\nhttps://gtalkjsonproxy.lhchavez.com");
 						logger.trace('recycled the token %s', token);
 						return;
+					} else {
+						// why is there a token, but not a mapping?
+						
+						delete tokens[post.username + ":" + post.auth];
 					}
+				}
 
-					var gtalk = require('./gtalk').gtalk(util.randomString(96), post.username, post.auth);
+				var gtalk = require('./gtalk').gtalk(util.randomString(96), post.username, post.auth);
 
-					gtalk.on('auth_failure', function(details) {
-						logger.notice("[401] " + req.method + " to " + req.url);
-						res.writeHead(401, "Authentication Required", {'Content-Type': 'text/plain'});
-						res.end('401 - Authentication Required');
-					}).on('disconnect', function() {
-						if (!mapping[gtalk.token]) {
-							logger.error('There was a race condition ending the session for %s', gtalk.username);
-						} else {
-							logger.notice('session ended for %s', gtalk.username);
-							
-							delete tokens[gtalk.username + ':' + gtalk.auth];
-							delete mapping[gtalk.token];
-						}
-					});
+				gtalk.on('auth_failure', function(details) {
+					logger.notice("[401] " + req.method + " to " + req.url);
+					res.writeHead(401, "Authentication Required", {'Content-Type': 'text/plain'});
+					res.end('401 - Authentication Required');
+				}).on('disconnect', function() {
+					if (!mapping[gtalk.token]) {
+						logger.error('There was a race condition ending the session for %s', gtalk.username);
+					} else {
+						logger.notice('session ended for %s', gtalk.username);
+					}
 					
-					/*
-					gtalk.on('message', function(data) {
-						logger.trace("message: %s", data);
-					});
-					gtalk.on('presence', function(data) {
-						logger.trace("message: %s", data);
-					});
-					*/
+					delete tokens[gtalk.username + ':' + gtalk.auth];
+					delete mapping[gtalk.token];
+				});
+				
+				/*
+				gtalk.on('message', function(data) {
+					logger.trace("message: %s", data);
+				});
+				gtalk.on('presence', function(data) {
+					logger.trace("message: %s", data);
+				});
+				*/
 
-					gtalk.login(function() {
-						logger.notice("[200] " + req.method + " to " + req.url);
-						res.writeHead(200, "OK", {'Content-Type': 'text/plain'});
-						
-						logger.notice('session started ' + gtalk.username);
+				gtalk.login(function() {
+					logger.notice("[200] " + req.method + " to " + req.url);
+					res.writeHead(200, "OK", {'Content-Type': 'text/plain'});
+					
+					logger.notice('session started ' + gtalk.username);
 
-						mapping[gtalk.token] = gtalk;
-						tokens[post.username + ":" + post.auth] = gtalk.token;
-						
-						res.end(gtalk.token);
-					});
+					mapping[gtalk.token] = gtalk;
+					tokens[post.username + ":" + post.auth] = gtalk.token;
+					
+					res.end(gtalk.token + "\nhttps://gtalkjsonproxy.lhchavez.com");
+				});
 			});
 			
 			break;
@@ -173,8 +180,8 @@ https.createServer(options, function (req, res) {
 				} else {
 					logger.notice("[200] " + req.method + " to " + req.url);
 					res.writeHead(200, "OK", {'Content-Type': 'text/plain'});
-					res.end();
-					mapping[post.token].register(post.url);
+					res.end(mapping[post.token].jid);
+					mapping[post.token].register(post.url, post.tiles);
 					
 					if(mapping[pushMapping[post.url]] && pushMapping[post.url] != post.token) {
 						mapping[pushMapping[post.url]].logout(true);
@@ -203,6 +210,40 @@ https.createServer(options, function (req, res) {
 			});
 
 			break;
+		case '/rawiq':
+			handlePOST(res, req, ['token', 'body'], function(post) {
+				mapping[post.token].rawiq(post.id, post.body, function(iq) {				
+					logger.notice("[200] " + req.method + " to " + req.url);
+					res.writeHead(200, "OK", {'Content-Type': 'text/xml'});
+					
+					if(iq) {
+						res.end(util.xmlify('iq', iq));
+					} else {
+						res.end();
+					}
+				});
+			});
+
+			break;
+		case '/jingle':
+			handlePOST(res, req, ['token'], function(post) {				
+				logger.notice("[200] " + req.method + " to " + req.url);
+				res.writeHead(200, "OK", {'Content-Type': 'text/xml'});
+				
+				res.end('<servers>' + util.xmlify('stun', mapping[post.token].jingle) + '</servers>');
+			});
+
+			break;
+		case '/crashreport':
+			handlePOST(res, req, ['exception'], function(post) {				
+				logger.notice("[200] " + req.method + " to " + req.url);
+				res.writeHead(200, "OK", {'Content-Type': 'text/xml'});
+				res.end();
+				
+				client.rpush('crashreports', post.exception);
+			});
+
+			break;
 		default:
 			if(/\/images\/[a-f0-9]{32}/.test(req.url)) {
 				logger.notice("[200] " + req.method + " to " + req.url);
@@ -213,7 +254,7 @@ https.createServer(options, function (req, res) {
 							res.end(data);
 						});
 					} else {
-						res.writeHead(200, "OK", {'Content-Type': 'image/png', 'Content-Length': data.length});
+						res.writeHead(200, "OK", {'Content-Type': 'image/jpg', 'Content-Length': data.length});
 						res.end(data);
 					}
 				});
@@ -239,13 +280,6 @@ function handlePOST(res, req, params, cb) {
 			var post = querystring.parse(fullBody);
 
 			logger.trace('\tRequest %s ', post);
-
-			var tokens = [];
-			for(var tokn in mapping) {
-				tokens.push(tokn);
-			}
-
-			logger.trace('\tTokens %s ', tokens);
 			
 			var valid = true;
 			

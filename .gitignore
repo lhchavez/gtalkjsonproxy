@@ -1,3 +1,9 @@
 *.log
 *.crt
 *.key
+*.key-pass
+*.csr
+*.bak
+*~
+node_modules/
+

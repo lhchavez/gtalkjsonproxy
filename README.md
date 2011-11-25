@@ -1,11 +1,23 @@
-GTalkJsonProxy is released under the terms of the [CC BY-NC-SA license](http://creativecommons.org/licenses/by-nc-sa/3.0/).
+GTalkJsonProxy is released under the terms of the [CC BY-NC-SA license][1].
 
-# Setup dev environment
+# What is it?
+
+This is the JSON proxy used by the [Gchat][2] app to talk to the GoogleTalk IM
+service. Its client API is JSON over HTTP, which is translates into XMPP to
+send to Google. Crucially, the connection is maintained on the server side and
+messages are sent to the phone app using Microsoft's push notification server.
+
+Although it's currently tightly bound to Microsoft's push notification system,
+this server could be adapted to run battery-friendly IM clients on iOS or
+Android. Likewise, the GoogleTalk specific stuff can be stripped out to make a
+generic XMPP proxy.
+
+# How can I hack it?
 
 ## Prerequisites:
 
+* node
 * npm
-* node.js
 * redis
 
 ## Install dependencies:
@@ -38,5 +50,17 @@ Finally, generate a key used for encrypting stuff in-memory.
 
 # Running the server
 
-Start redis, run `sudo node service.js`.
+Start redis, run `sudo node service.js`. The server binds to port 443, then
+drops superuser privs.
+
+# Testing the server
+
+Fire POST requests at the URL. There's currently no protocol specification, but
+the protocol can be distilled from [GoogleTalk.cs][3] in the client project.
+Use your favorite requests library or install the Windows Phone SDK and build
+the client app.
+
+  [1]: http://creativecommons.org/licenses/by-nc-sa/3.0/)
+  [2]: https://github.com/lhchavez/gtalkchat/
+  [3]: https://github.com/lhchavez/gtalkchat/blob/master/Gchat/Protocol/GoogleTalk.cs
 

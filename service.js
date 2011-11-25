@@ -133,7 +133,7 @@ https.createServer(options, function (req, res) {
 				logger.notice("[200] " + req.method + " to " + req.url);
 				res.writeHead(200, "OK", {'Content-Type': 'text/json'});
 				mapping[post.token].roster(function(ros) {
-					if(ros == null) {
+					if(ros === null) {
 						res.end();
 					} else {
 						res.write(JSON.stringify(ros) + "\n");
@@ -172,7 +172,7 @@ https.createServer(options, function (req, res) {
 			break;
 		case '/register':
 			handlePOST(res, req, ['token', 'url'], function(post) {
-				if(!post.url.match(/(https?):\/\/([a-z0-9.-]+)(?::([0-9]+))?(\/.*)?$/)) {
+				if(!post.url.match(/(https?):\/\/([a-z0-9.\-]+)(?::([0-9]+))?(\/.*)?$/)) {
 					logger.notice("[400] " + req.method + " to " + req.url);
 					logger.debug('what the url? %s', post.url);
 					res.writeHead(400, "Bad Request", {'Content-Type': 'text/plain'});
@@ -315,7 +315,7 @@ process.setuid('gtalk');
 logger.notice('Starting gtalkjsonproxy on port 433');
 
 client.smembers('clients', function(err, clients) {
-	if(clients == null) return;
+	if(clients === null) return;
 	
 	clients.forEach(function (c) {
 		client.get(c, function (err, data) {

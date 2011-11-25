@@ -123,7 +123,7 @@ XmlStream.prototype.update = function(buf, offset, len) {
 	var last = 0;
 	var self = this;
 	
-	while ((m = this.tag.exec(this.remaining)) != null) {	
+	while ((m = this.tag.exec(this.remaining)) !== null) {	
 		last = this.tag.lastIndex;
 		
 		if(m[2] == 'stream:stream') {
@@ -152,8 +152,6 @@ XmlStream.prototype.update = function(buf, offset, len) {
 	this.good += this.remaining.substring(begin, last);
 	this.remaining = this.remaining.substring(last);
 };
-
-module.exports.json
 
 module.exports.xmlify = function(tag, json) {
 	if(typeof(json) == 'object' && json.length) {
@@ -203,4 +201,5 @@ module.exports.xmlEscape = function(str) {
 		.replace(/"/g, '&quot;')
 		.replace(/</g, '&lt;')
 		.replace(/>/g, '&gt;');
-}
+};
+

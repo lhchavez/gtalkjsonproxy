@@ -10,8 +10,8 @@ var awayTimeout = 15 * 60 * 1000; // 15 min
 var xaTimeout = 15 * 60 * 1000; // 30 min
 var disconnectTimeout = 90 * 60 * 1000; // 2h
 
-var clientCert = undefined;
-var clientKey = undefined;
+var clientCert;
+var clientKey;
 
 var lastId = {};
 
@@ -81,7 +81,7 @@ function gtalk(token, username, auth) {
 	});
 	
 	logger.trace("gtalk instance created: %s", this);
-};
+}
 
 gtalk.prototype = new process.EventEmitter();
 
@@ -639,7 +639,7 @@ gtalk.prototype.message = function(to, body, cb) {
 	var jid = to;
 	
 	if(jid.indexOf('/')) {
-		jid = jid.split("/")[0]
+		jid = jid.split("/")[0];
 	}
 	
 	if(!this.rosterList[jid]) {
@@ -819,7 +819,7 @@ gtalk.prototype.messageQueue = function(cb) {
 	var self = this;
 	
 	client.lrange('messages:' + self.key, 0, -1, function(err, messages) {
-		if(messages == null) return;
+		if(messages === null) return;
 		
 		messages.forEach(function(msg) {
 			logger.trace("sending a message", msg);
@@ -893,4 +893,5 @@ module.exports.gtalk = function(token, username, auth) {
 module.exports.initClientCert = function(ck, cc) {
 	clientKey = ck;
 	clientCert = cc;
-}
+};
+

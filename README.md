@@ -29,7 +29,9 @@ generic XMPP proxy.
 
 ## Generate certificates
 
-Generate the server key, self-sign it, then remove the passphrase.
+Generate the server certificate, self-sign it, then remove the passphrase. This
+is the certificate presented to connecting clients. Its cn should match your
+host name.
 
     openssl genrsa -aes256 -out server.key-pass 1024
     openssl req -new -key server.key-pass -out server.csr
@@ -39,7 +41,13 @@ Generate the server key, self-sign it, then remove the passphrase.
 
 Repeat the above for the client key, conveniently named `client.key`.
 
-Finally, generate a key used for encrypting stuff in-memory.
+    openssl genrsa -aes256 -out client.key-pass 1024
+    openssl req -new -key client.key-pass -out client.csr
+    openssl x509 -req -days 365 -in client.csr -signkey client.key-pass -out client.crt
+    openssl rsa -in client.key-pass -out client.key
+    rm client.csr 
+
+Finally, generate a key used to encrypting the stuff that gets stored in redis.
 
     openssl genrsa -aes256 -out crypto.key-pass 1024
     openssl rsa -in crypto.key-pass -out crypto.key

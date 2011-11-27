@@ -68,7 +68,14 @@ the protocol can be distilled from [GoogleTalk.cs][3] in the client project.
 Use your favorite requests library or install the Windows Phone SDK and build
 the client app.
 
+# Background information
+
+* [GoogleTalk developer documentation][4]
+* [XMPP Protocol specs][5]
+
   [1]: http://creativecommons.org/licenses/by-nc-sa/3.0/
   [2]: https://github.com/lhchavez/gtalkchat/
   [3]: https://github.com/lhchavez/gtalkchat/blob/master/Gchat/Protocol/GoogleTalk.cs
+  [4]: http://code.google.com/apis/talk/talk_developers_home.html
+  [5]: http://xmpp.org/xmpp-protocols/rfcs/
 

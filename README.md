@@ -19,7 +19,7 @@ servers, Microsoft's push notification service and the Windows Phone app
 itself. The connections and direction of communication (initiation) are shown
 below:
 
-![Network components](./docs/GTalkChat.Communication.png)
+![Network Components Diagram](https://github.com/barend/gtalkjsonproxy/raw/master/docs/GTalkChat.Communication.png)
 
 When the user issues the login command from the phone app, the credentials are
 authenticated directly with Google (1). After successful authentication, the

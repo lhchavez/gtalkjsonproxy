@@ -141,7 +141,7 @@ Log.prototype.log = function(level, args) {
 
 Log.prototype.emergency = function(msg){
 	this.log(exports.EMERGENCY, arguments);
-};
+},
 
 /**
 * Log alert `msg`.
@@ -152,7 +152,7 @@ Log.prototype.emergency = function(msg){
 
 Log.prototype.alert = function(msg){
 	this.log(exports.ALERT, arguments);
-};
+},
 
 /**
 * Log critical `msg`.

@@ -95,7 +95,7 @@ drops superuser privs.
 
 You may want to set the logging level to TRACE at the top of `service.js`.
 
-Autheticate with Google, dig up your auth token. Use your requests library of
+Authenticate with Google, dig up your auth token. Use your requests library of
 choice to fire an HTTP POST at `/login` with `username` and `auth` parameters
 as post data.
 

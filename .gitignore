@@ -8,9 +8,4 @@
 .DS_Store
 Thumbs.db
 node_modules/
-proxy/keys/*
-gchat/keys/*
-proxy/run/*
-gchat/run/*
-proxy/log/*
-gchat/log/*
+

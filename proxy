@@ -1,0 +1,30 @@
+#!/usr/bin/python
+
+import sys
+import os
+import signal
+
+if os.path.exists('proxy.pid'):
+	f = open('proxy.pid', 'r')
+	try:
+		os.kill(int(f.read().strip()), signal.SIGTERM)
+	except:
+		pass
+	f.close()
+
+pid = os.fork()
+
+if pid:
+	sys.exit(0)
+else:
+	f = open('proxy.pid', 'w')
+	f.write("%s\n" % os.getpid())
+	f.close()
+
+	os.close(1)
+
+	logfd = os.open('service.log', os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
+
+	os.dup2(logfd, 2)
+
+	os.execl("/usr/local/bin/node", "node", "service.js")

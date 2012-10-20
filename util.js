@@ -137,7 +137,8 @@ XmlStream.prototype.update = function(buf, offset, len) {
 		}
 		
 		if(this.nesting == 0) {
-			var parser = new xml2js.Parser();
+//			var parser = new xml2js.Parser();
+			var parser = new xml2js.Parser(xml2js.defaults["0.1"]);
 						
 			parser.addListener('end', function(result) {
 				self.emit('data', result);
